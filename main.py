@@ -1,5 +1,7 @@
-# minimal_anon_chat_bot.py
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatAction
+# main.py
+import os
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ChatAction
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from deep_translator import GoogleTranslator
 
@@ -95,9 +97,11 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     audio_file = update.message.voice or update.message.audio
     if audio_file:
         file = await context.bot.get_file(audio_file.file_id)
-        await file.download_to_drive(f"{audio_file.file_id}.ogg")
+        filename = f"{audio_file.file_id}.ogg"
+        await file.download_to_drive(filename)
         await context.bot.send_chat_action(chat_id=partner_id, action=ChatAction.RECORD_VOICE)
-        await context.bot.send_voice(chat_id=partner_id, voice=open(f"{audio_file.file_id}.ogg", 'rb'))
+        with open(filename, 'rb') as f:
+            await context.bot.send_voice(chat_id=partner_id, voice=f)
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -122,7 +126,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- MAIN ---
 if __name__ == '__main__':
-    app = ApplicationBuilder().token("YOUR_TELEGRAM_BOT_TOKEN").build()
+    app = ApplicationBuilder().token(os.environ.get("TELEGRAM_BOT_TOKEN")).build()
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("match", match))
