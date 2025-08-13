@@ -5,6 +5,11 @@ from telegram.constants import ChatAction
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from deep_translator import GoogleTranslator
 
+# --- TEKSHIR TOKEN ---
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("❌ Telegram bot tokeni topilmadi! Environment Variable qo‘shilganligini tekshiring.")
+
 # --- GLOBALS ---
 USERS = {}   # user_id : {'lang': 'uz', 'chatting_with': None}
 QUEUE = []   # navbatdagi foydalanuvchilar
@@ -54,7 +59,6 @@ async def match(update: Update, context: ContextTypes.DEFAULT_TYPE):
         QUEUE.append(user_id)
     await update.message.reply_text("🔎 Suhbatdosh topilmoqda...")
     
-    # Agar navbatda boshqa foydalanuvchi bo‘lsa
     if len(QUEUE) >= 2:
         u1 = QUEUE.pop(0)
         u2 = QUEUE.pop(0)
@@ -126,7 +130,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- MAIN ---
 if __name__ == '__main__':
-    app = ApplicationBuilder().token(os.environ.get("TELEGRAM_BOT_TOKEN")).build()
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("match", match))
@@ -135,5 +139,5 @@ if __name__ == '__main__':
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, audio_handler))
     
-    print("Bot ishga tushdi...")
+    print("✅ Bot ishga tushdi...")
     app.run_polling()
