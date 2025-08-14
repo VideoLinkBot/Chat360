@@ -2,7 +2,12 @@
 import os
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.constants import ChatAction
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, CallbackQueryHandler,
+    MessageHandler, filters, ContextTypes
+)
+from deep_translator import GoogleTranslator
 
 # --- TOKEN VA ADMIN ---
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -11,49 +16,31 @@ if not BOT_TOKEN:
     raise ValueError("❌ Telegram bot tokeni topilmadi!")
 
 # --- GLOBALS ---
-USERS = {}
+USERS = {}  # user_id: {'lang': None, 'chatting_with': None, 'vip': False, 'vip_until': None, 'refs': 0, 'profile': {}}
 QUEUE = []
 
-LANGUAGES = {
-    'uz': '🇺🇿 O‘zbekcha',
-    'ru': '🇷🇺 Ruscha',
-    'en': '🇬🇧 Inglizcha',
-    'ko': '🇰🇷 Koreyscha'
-}
-
+LANGUAGES = {'uz':'🇺🇿 O‘zbekcha', 'ru':'🇷🇺 Ruscha', 'en':'🇬🇧 Inglizcha', 'ko':'🇰🇷 Koreyscha'}
 GENDERS = ['Erkak', 'Ayol']
 AGES = ['15-20', '21-30', '31-40', '41+']
-PROVINCES = [
-    'Toshkent', 'Samarqand', 'Buxoro', 'Farg‘ona', 'Andijon',
-    'Surxondaryo', 'Qoraqalpog‘iston', 'Namangan', 'Jizzax',
-    'Navoiy', 'Sirdaryo', 'Xorazm'
-]
+PROVINCES = ['Toshkent','Samarqand','Buxoro','Farg‘ona','Andijon','Surxondaryo','Qoraqalpog‘iston','Namangan','Jizzax','Navoiy','Sirdaryo','Xorazm']
 
-# --- HELPERS ---
+# --- KEYBOARDS ---
 def get_lang_keyboard():
-    keyboard = [[InlineKeyboardButton(name, callback_data=f"lang_{code}")] for code, name in LANGUAGES.items()]
-    return InlineKeyboardMarkup(keyboard)
-
+    return InlineKeyboardMarkup([[InlineKeyboardButton(name, callback_data=f"lang_{code}")] for code,name in LANGUAGES.items()])
 def get_gender_keyboard():
-    keyboard = [[InlineKeyboardButton(g, callback_data=f"gender_{g}")] for g in GENDERS]
-    return InlineKeyboardMarkup(keyboard)
-
+    return InlineKeyboardMarkup([[InlineKeyboardButton(g, callback_data=f"gender_{g}")] for g in GENDERS])
 def get_age_keyboard():
-    keyboard = [[InlineKeyboardButton(a, callback_data=f"age_{a}")] for a in AGES]
-    return InlineKeyboardMarkup(keyboard)
-
+    return InlineKeyboardMarkup([[InlineKeyboardButton(a, callback_data=f"age_{a}")] for a in AGES])
 def get_province_keyboard():
-    keyboard = [[InlineKeyboardButton(p, callback_data=f"province_{p}")] for p in PROVINCES]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_chat_buttons():
-    keyboard = [
+    return InlineKeyboardMarkup([[InlineKeyboardButton(p, callback_data=f"province_{p}")] for p in PROVINCES])
+def get_chat_buttons(): 
+    return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔄 Keyingi", callback_data='next')],
         [InlineKeyboardButton("⏹ To‘xtatish", callback_data='stop')],
         [InlineKeyboardButton("🚫 Shikoyat", callback_data='report')]
-    ]
-    return InlineKeyboardMarkup(keyboard)
+    ])
 
+# --- VIP CHECK ---
 def check_vip(user_id):
     user = USERS.get(user_id)
     if user and user.get('vip') and user.get('vip_until'):
@@ -61,59 +48,12 @@ def check_vip(user_id):
             user['vip'] = False
             user['vip_until'] = None
 
-async def match(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Suhbatdosh topish (VIP avval, filtrlar bo‘yicha)"""
-    user_id = update.effective_user.id
-    user = USERS[user_id]
-    check_vip(user_id)
-
-    # Filtrlash: jins, yosh, viloyat
-    candidates = []
-    for uid, u in USERS.items():
-        if uid == user_id:
-            continue
-        if u.get('chatting_with'):
-            continue
-        # Filtrlar
-        if u['profile'].get('gender') != user['profile'].get('gender') and user['profile'].get('gender') != 'Hammasi':
-            continue
-        if u['profile'].get('age') != user['profile'].get('age') and user['profile'].get('age') != 'Hammasi':
-            continue
-        if u['profile'].get('province') != user['profile'].get('province') and user['profile'].get('province') != 'Hammasi':
-            continue
-        candidates.append(uid)
-
-    # VIP birinchi
-    vip_candidates = [uid for uid in candidates if USERS[uid].get('vip')]
-    selected = None
-    if user.get('vip') and vip_candidates:
-        selected = vip_candidates[0]
-    elif candidates:
-        selected = candidates[0]
-
-    if selected:
-        USERS[user_id]['chatting_with'] = selected
-        USERS[selected]['chatting_with'] = user_id
-        await context.bot.send_message(chat_id=user_id, text="✅ Suhbat boshlandi!", reply_markup=get_chat_buttons())
-        await context.bot.send_message(chat_id=selected, text="✅ Suhbat boshlandi!", reply_markup=get_chat_buttons())
-    else:
-        QUEUE.append(user_id)
-        await context.bot.send_message(chat_id=user_id, text="🔄 Suhbatdosh topilmadi, biroz kuting...")
-
-# --- HANDLERS ---
+# --- START ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     args = context.args
-
     if user_id not in USERS:
-        USERS[user_id] = {
-            'lang': None,
-            'chatting_with': None,
-            'vip': False,
-            'vip_until': None,
-            'refs': 0,
-            'profile': {}
-        }
+        USERS[user_id] = {'lang': None, 'chatting_with': None, 'vip': False, 'vip_until': None, 'refs': 0, 'profile': {}}
 
     # Referral
     if args and args[0].startswith("ref_"):
@@ -123,38 +63,42 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if USERS[inviter_id]['refs'] >= 10 and not USERS[inviter_id]['vip']:
                 USERS[inviter_id]['vip'] = True
                 USERS[inviter_id]['vip_until'] = datetime.now() + timedelta(days=7)
-                await context.bot.send_message(inviter_id, "🏆 Tabriklaymiz! Siz VIP bo‘ldingiz 7 kun davomida!")
+                await context.bot.send_message(inviter_id, "🏆 Siz VIP bo‘ldingiz 7 kun!")
 
-    await update.message.reply_text("👋 Salom! Iltimos, ismingizni kiriting:")
+    # Boshlang‘ich dizayn
+    intro = (
+        "👋 Chat360 ga xush kelibsiz!\n\n"
+        "📌 Bu botda anonim ravishda suhbat qilishingiz mumkin.\n"
+        "🌐 Matn va audio yuborish mumkin.\n"
+        "⚡ VIP navbat orqali tezroq suhbat topishingiz mumkin.\n"
+        "👥 Do‘stlaringizni taklif qilib VIP oling!\n\n"
+        f"🔗 Sizning referral linkingiz:\nhttps://t.me/{context.bot.username}?start=ref_{user_id}"
+    )
+    await update.message.reply_text(intro)
 
+    # Profil so‘rash startdan keyin
+    await update.message.reply_text("Iltimos, ismingizni kiriting:")
+
+# --- PROFILE HANDLER ---
 async def profile_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text
+    profile = USERS[user_id]['profile']
 
-    if 'name' not in USERS[user_id]['profile']:
-        USERS[user_id]['profile']['name'] = text
+    if 'name' not in profile:
+        profile['name'] = text
         await update.message.reply_text("Yoshingizni tanlang:", reply_markup=get_age_keyboard())
-    elif 'age' not in USERS[user_id]['profile']:
-        USERS[user_id]['profile']['age'] = text
+    elif 'age' not in profile:
+        profile['age'] = text
         await update.message.reply_text("Jinsingizni tanlang:", reply_markup=get_gender_keyboard())
-    elif 'gender' not in USERS[user_id]['profile']:
-        USERS[user_id]['profile']['gender'] = text
+    elif 'gender' not in profile:
+        profile['gender'] = text
         await update.message.reply_text("Qayerdansiz?", reply_markup=get_province_keyboard())
-    elif 'province' not in USERS[user_id]['profile']:
-        USERS[user_id]['profile']['province'] = text
-
-        # Boshlang‘ich dizayn
-        text_intro = (
-            "👋 **Chat360** ga xush kelibsiz!\n\n"
-            "📌 Bu botda siz anonim ravishda istalgan odam bilan muloqot qilishingiz mumkin.\n"
-            "🌐 Matn va audio yuborish imkoniyati mavjud.\n"
-            "⚡ VIP navbat orqali suhbatdoshni tezroq topishingiz mumkin.\n"
-            "👥 Do‘stlaringizni taklif qilib VIP oling!\n\n"
-            f"🔗 Sizning referral linkingiz:\nhttps://t.me/{context.bot.username}?start=ref_{user_id}"
-        )
-        await update.message.reply_text(text_intro, parse_mode="Markdown")
+    elif 'province' not in profile:
+        profile['province'] = text
         await update.message.reply_text("Tilni tanlang:", reply_markup=get_lang_keyboard())
 
+# --- BUTTON HANDLER ---
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -168,7 +112,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("gender_"):
         USERS[user_id]['profile']['gender'] = data.split("_")[1]
         await query.answer(f"Jins tanlandi: {USERS[user_id]['profile']['gender']}")
-        await query.message.reply_text("Qayerdansiz?", reply_markup=get_province_keyboard())
         return
     elif data.startswith("age_"):
         USERS[user_id]['profile']['age'] = data.split("_")[1]
@@ -177,7 +120,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("province_"):
         USERS[user_id]['profile']['province'] = data.split("_")[1]
         await query.answer(f"Viloyat tanlandi: {USERS[user_id]['profile']['province']}")
-        await query.message.reply_text("Endi /match buyrug‘i bilan suhbatni boshlashingiz mumkin.")
         return
 
     # Chat tugmalari
@@ -197,28 +139,97 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == 'report':
         await query.message.reply_text("✅ Rahmat! Suhbat boshqaruvchiga yuborildi.")
 
-async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- MATCH HANDLER ---
+async def match(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    partner_id = USERS.get(user_id, {}).get('chatting_with')
-    if partner_id:
-        await context.bot.send_message(chat_id=partner_id, text=update.message.text)
+    check_vip(user_id)
+    if user_id not in QUEUE:
+        if USERS[user_id]['vip']:
+            QUEUE.insert(0,user_id)
+        else:
+            QUEUE.append(user_id)
+    await update.message.reply_text("🔎 Suhbatdosh topilmoqda...")
 
+    while len(QUEUE)>=2:
+        u1 = QUEUE.pop(0)
+        u2 = QUEUE.pop(0)
+        USERS[u1]['chatting_with'] = u2
+        USERS[u2]['chatting_with'] = u1
+        for uid in [u1,u2]:
+            await context.bot.send_message(chat_id=uid, text="🆕 Suhbatdosh topildi!", reply_markup=get_chat_buttons())
+
+# --- MESSAGE HANDLER ---
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in USERS or USERS[user_id]['chatting_with'] is None:
+        await update.message.reply_text("❗ Suhbatdosh topilmagan. /match buyrug‘ini bosing.")
+        return
+    partner_id = USERS[user_id]['chatting_with']
+    user_lang = USERS[user_id]['lang']
+    partner_lang = USERS[partner_id]['lang']
+    text = update.message.text
+    if user_lang != partner_lang:
+        try:
+            text = GoogleTranslator(source=user_lang,target=partner_lang).translate(text)
+        except:
+            pass
+    await context.bot.send_message(chat_id=partner_id,text=text)
+
+# --- AUDIO HANDLER ---
 async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    partner_id = USERS.get(user_id, {}).get('chatting_with')
-    if partner_id:
-        await context.bot.send_audio(chat_id=partner_id, audio=update.message.audio.file_id)
+    if user_id not in USERS or USERS[user_id]['chatting_with'] is None:
+        await update.message.reply_text("❗ Suhbatdosh topilmagan. /match buyrug‘ini bosing.")
+        return
+    partner_id = USERS[user_id]['chatting_with']
+    audio_file = update.message.voice or update.message.audio
+    if audio_file:
+        file = await context.bot.get_file(audio_file.file_id)
+        filename = f"{audio_file.file_id}.ogg"
+        await file.download_to_drive(filename)
+        await context.bot.send_chat_action(chat_id=partner_id, action=ChatAction.RECORD_VOICE)
+        with open(filename,'rb') as f:
+            await context.bot.send_voice(chat_id=partner_id,voice=f)
+
+# --- VIP STATUS ---
+async def vip_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    check_vip(user_id)
+    user = USERS.get(user_id,{})
+    if user.get('vip'):
+        remaining = user['vip_until'] - datetime.now()
+        days,hours = divmod(remaining.total_seconds(),86400)
+        hours, remainder = divmod(hours,3600)
+        minutes,_ = divmod(remainder,60)
+        status_text = f"💎 VIP foydalanuvchi\n⏳ Qolgan vaqt: {int(days)} kun {int(hours)} soat {int(minutes)} minut"
+    else: status_text="❌ Oddiy foydalanuvchi"
+    refs = user.get('refs',0)
+    await update.message.reply_text(f"{status_text}\n👥 Taklif qilganlar: {refs}")
+
+# --- ADMIN DATA ---
+async def admin_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ Siz admin emassiz!")
+        return
+    text = "📊 RAMdagi ma'lumotlar:\n\n"
+    for uid,user in USERS.items():
+        text += f"{uid}: {user}\n"
+    await update.message.reply_text(text)
 
 # --- MAIN ---
 if __name__ == '__main__':
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+    # Handlers
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("match", match))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, profile_handler))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
-    app.add_handler(MessageHandler(filters.AUDIO, audio_handler))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, audio_handler))
     app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(CommandHandler("vip", vip_status))
+    app.add_handler(CommandHandler("admin", admin_data))
+    app.add_handler(CommandHandler("match", match))
 
     print("✅ Bot ishga tushdi...")
     app.run_polling()
