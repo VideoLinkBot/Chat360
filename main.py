@@ -8,12 +8,12 @@ from deep_translator import GoogleTranslator
 
 # --- TOKEN VA ADMIN ---
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-ADMIN_ID = 6905227976  # Sizning Telegram IDingiz
+ADMIN_ID = 6905227976
 if not BOT_TOKEN:
     raise ValueError("❌ Telegram bot tokeni topilmadi!")
 
 # --- GLOBALS ---
-USERS = {}   # user_id : {'lang': None, 'chatting_with': None, 'vip': False, 'vip_until': None, 'refs': 0, 'profile': {}}
+USERS = {}
 QUEUE = []
 
 LANGUAGES = {
@@ -25,7 +25,11 @@ LANGUAGES = {
 
 GENDERS = ['Erkak', 'Ayol']
 AGES = ['15-20', '21-30', '31-40', '41+']
-PROVINCES = ['Toshkent', 'Samarqand', 'Buxoro', 'Farg‘ona', 'Andijon', 'Surxondaryo', 'Qoraqalpog‘iston']
+PROVINCES = [
+    'Toshkent', 'Samarqand', 'Buxoro', 'Farg‘ona', 'Andijon', 
+    'Surxondaryo', 'Qoraqalpog‘iston', 'Namangan', 'Jizzax', 
+    'Navoiy', 'Sirdaryo', 'Xorazm'
+]
 
 # --- HELPERS ---
 def get_lang_keyboard():
@@ -53,7 +57,6 @@ def get_chat_buttons():
     return InlineKeyboardMarkup(keyboard)
 
 def check_vip(user_id):
-    """VIP muddati tugaganini tekshiradi"""
     user = USERS.get(user_id)
     if user and user.get('vip') and user.get('vip_until'):
         if datetime.now() > user['vip_until']:
@@ -75,7 +78,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'profile': {}
         }
 
-    # Referral orqali kirgan bo‘lsa
+    # Referral
     if args and args[0].startswith("ref_"):
         inviter_id = int(args[0].split("_")[1])
         if inviter_id != user_id and inviter_id in USERS:
@@ -85,9 +88,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 USERS[inviter_id]['vip_until'] = datetime.now() + timedelta(days=7)
                 await context.bot.send_message(inviter_id, "🏆 Tabriklaymiz! Siz VIP bo‘ldingiz 7 kun davomida!")
 
-    # Profil ma’lumotlarini so‘rash
+    # Profil so‘rash
     await update.message.reply_text("Iltimos, ismingizni kiriting:")
-    return
 
 async def profile_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -95,7 +97,7 @@ async def profile_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if 'name' not in USERS[user_id]['profile']:
         USERS[user_id]['profile']['name'] = text
-        await update.message.reply_text("Yoshingizni kiriting:")
+        await update.message.reply_text("Yoshingizni tanlang:", reply_markup=get_age_keyboard())
     elif 'age' not in USERS[user_id]['profile']:
         USERS[user_id]['profile']['age'] = text
         await update.message.reply_text("Jinsingizni tanlang:", reply_markup=get_gender_keyboard())
@@ -105,7 +107,7 @@ async def profile_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif 'province' not in USERS[user_id]['profile']:
         USERS[user_id]['profile']['province'] = text
 
-        # Boshlang‘ich dizayn chiqarish
+        # Boshlang‘ich dizayn
         text_intro = (
             "👋 **Chat360** ga xush kelibsiz!\n\n"
             "📌 Bu botda siz anonim ravishda istalgan odam bilan muloqot qilishingiz mumkin.\n"
@@ -117,13 +119,11 @@ async def profile_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text_intro, parse_mode="Markdown")
         await update.message.reply_text("Tilni tanlang:", reply_markup=get_lang_keyboard())
 
-# --- Til va boshqa tugmalar callback ---
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
     data = query.data
 
-    # Profil tugmalari
     if data.startswith("lang_"):
         lang = data.split("_")[1]
         USERS[user_id]['lang'] = lang
@@ -145,7 +145,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("Endi /match buyrug‘i bilan suhbatni boshlashingiz mumkin.")
         return
 
-    # Suhbat tugmalari
+    # Chat tugmalari
     partner_id = USERS[user_id]['chatting_with']
     if data == 'next':
         if partner_id:
@@ -169,7 +169,7 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, profile_handler))
     app.add_handler(CallbackQueryHandler(button_handler))
-    # Shu yerga avvalgi match, message_handler, audio_handler va vip_status handlerlarini qo‘shasiz
+    # Match, message_handler, audio_handler, vip_status handlerlarini shu yerga qo‘shing
 
     print("✅ Bot ishga tushdi...")
     app.run_polling()
