@@ -13,7 +13,7 @@ if not BOT_TOKEN:
     raise ValueError("❌ Telegram bot tokeni topilmadi!")
 
 # --- GLOBALS ---
-USERS = {}   # user_id : {'lang': None, 'chatting_with': None, 'vip': False, 'vip_until': None, 'refs': 0}
+USERS = {}   # user_id : {'lang': None, 'chatting_with': None, 'vip': False, 'vip_until': None, 'refs': 0, 'name': None, 'age': None, 'gender': None, 'location': None}
 QUEUE = []
 
 LANGUAGES = {
@@ -55,7 +55,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'chatting_with': None,
             'vip': False,
             'vip_until': None,
-            'refs': 0
+            'refs': 0,
+            'name': None,
+            'age': None,
+            'gender': None,
+            'location': None
         }
 
     # Referral orqali kirgan bo‘lsa
@@ -170,6 +174,38 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == 'report':
         await query.message.reply_text("✅ Rahmat! Suhbat boshqaruvchiga yuborildi.")
 
+# --- PROFILE HANDLER ---
+async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in USERS:
+        await update.message.reply_text("❗ Iltimos, avval /start buyrug‘i bilan botni ishga tushiring.")
+        return
+
+    args = context.args
+    if len(args) < 4:
+        await update.message.reply_text(
+            "📝 Profilni to‘ldirish uchun:\n"
+            "/profile Ism Yosh Jins Qayerdan\n\n"
+            "Masalan:\n"
+            "/profile Behruz 29 Erkak Sherobod"
+        )
+        return
+
+    name, age, gender, location = args[0], args[1], args[2], " ".join(args[3:])
+    USERS[user_id]['name'] = name
+    USERS[user_id]['age'] = age
+    USERS[user_id]['gender'] = gender
+    USERS[user_id]['location'] = location
+
+    await update.message.reply_text(
+        f"✅ Profil yangilandi:\n"
+        f"Ism: {name}\n"
+        f"Yosh: {age}\n"
+        f"Jins: {gender}\n"
+        f"Qayerdan: {location}"
+    )
+
+# --- VIP STATUS HANDLER ---
 async def vip_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     check_vip(user_id)
@@ -185,6 +221,7 @@ async def vip_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     refs = user.get('refs', 0)
     await update.message.reply_text(f"{status_text}\n👥 Taklif qilganlar: {refs}")
 
+# --- ADMIN DATA ---
 async def admin_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
@@ -198,6 +235,10 @@ async def admin_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         vip_until_str = vip_until.strftime("%Y-%m-%d %H:%M") if vip_until else "N/A"
         text += (
             f"ID: {uid}\n"
+            f"Ism: {info.get('name')}\n"
+            f"Yosh: {info.get('age')}\n"
+            f"Jins: {info.get('gender')}\n"
+            f"Qayerdan: {info.get('location')}\n"
             f"Til: {info.get('lang')}\n"
             f"Chatting_with: {info.get('chatting_with')}\n"
             f"VIP: {vip} (Until: {vip_until_str})\n"
@@ -212,6 +253,7 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("match", match))
     app.add_handler(CommandHandler("vip", vip_status))
+    app.add_handler(CommandHandler("profile", profile))
     app.add_handler(CommandHandler("admin_data", admin_data))
     app.add_handler(CallbackQueryHandler(lang_select, pattern='^(' + '|'.join(LANGUAGES.keys()) + ')$'))
     app.add_handler(CallbackQueryHandler(button_handler, pattern='^(next|stop|report)$'))
