@@ -80,14 +80,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Boshlang‘ich dizayn
     intro_text = (
-        "👋 **Chat360** ga xush kelibsiz!\n\n"
+        "👋 Chat360 ga xush kelibsiz!\n\n"
         "📌 Bu botda siz anonim ravishda istalgan odam bilan muloqot qilishingiz mumkin.\n"
         "🌐 Matn va audio yuborish imkoniyati mavjud.\n"
         "⚡ VIP navbat orqali suhbatdoshni tezroq topishingiz mumkin.\n"
         "👥 Do‘stlaringizni taklif qilib VIP oling!\n\n"
-        f"🔗 Sizning referral linkingiz:\nhttps://t.me/{context.bot.username}?start=ref_{user_id}"
+        f"🔗 Sizning referral linkingiz: https://t.me/{context.bot.username}?start=ref_{user_id}"
     )
-    await update.message.reply_text(intro_text, parse_mode="Markdown")
+    await update.message.reply_text(intro_text)
     await update.message.reply_text("Tilni tanlang:", reply_markup=get_lang_keyboard())
 
 async def profile_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -108,23 +108,15 @@ async def profile_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Iltimos, faqat 'Erkak' yoki 'Ayol' deb yozing:")
             return
         USERS[user_id]['profile']['gender'] = text.capitalize()
-        await update.message.reply_text(
-            "Qayerdansiz? (masalan: Toshkent, Samarqand, Buxoro...)"
-        )
+        await update.message.reply_text("Qayerdansiz? (masalan: Toshkent, Samarqand, Buxoro...)")
     elif 'province' not in USERS[user_id]['profile']:
         if text not in PROVINCES:
             await update.message.reply_text("Iltimos, viloyatlardan birini yozing:")
             return
         USERS[user_id]['profile']['province'] = text
-        # Profil to‘liq
         await update.message.reply_text("Profilingiz saqlandi ✅")
-        await update.message.reply_text(
-            "VIP statusingizni tekshirish:",
-            reply_markup=get_vip_keyboard(user_id)
-        )
-        await update.message.reply_text(
-            "Endi /match buyrug‘i bilan suhbatni boshlashingiz mumkin."
-        )
+        await update.message.reply_text("VIP statusingizni tekshiring:", reply_markup=get_vip_keyboard(user_id))
+        await update.message.reply_text("Endi /match buyrug‘i bilan suhbatni boshlashingiz mumkin.")
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -134,50 +126,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("lang_"):
         USERS[user_id]['lang'] = data.split("_")[1]
         await query.answer(f"Til tanlandi: {USERS[user_id]['lang']}")
-        await query.message.reply_text(
-            "Endi profil ma’lumotlaringizni kiriting."
-        )
+        await query.message.reply_text("Endi profil ma’lumotlaringizni kiriting.")
     elif data == 'vip_status':
         check_vip(user_id)
         status = "✅ VIP" if USERS[user_id].get('vip') else "❌ VIP"
         await query.answer(f"Holatingiz: {status}")
         await query.message.reply_text(f"Sizning VIP holatingiz: {status}")
 
-    # Chat tugmalari
-    partner_id = USERS[user_id].get('chatting_with')
-    if data == 'next':
-        if partner_id:
-            USERS[partner_id]['chatting_with'] = None
-        USERS[user_id]['chatting_with'] = None
-        await query.message.reply_text("🔄 Keyingi suhbatdosh topilmoqda...")
-        await match(update, context)
-    elif data == 'stop':
-        if partner_id:
-            USERS[partner_id]['chatting_with'] = None
-            await context.bot.send_message(chat_id=partner_id, text="⏹ Suhbat tugadi.")
-        USERS[user_id]['chatting_with'] = None
-        await query.message.reply_text("⏹ Suhbat tugadi.")
-    elif data == 'report':
-        await query.message.reply_text("✅ Rahmat! Suhbat boshqaruvchiga yuborildi.")
-
-# --- Match funksiyasi ---
 async def match(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if USERS[user_id]['chatting_with']:
         await context.bot.send_message(user_id, "Siz allaqachon suhbatdosh bilan ulanibsiz.")
         return
-    # Oddiy navbat (VIP bo‘lsa oldinga)
     check_vip(user_id)
-    if USERS[user_id].get('vip'):
-        for uid in QUEUE:
-            if uid != user_id:
-                USERS[user_id]['chatting_with'] = uid
-                USERS[uid]['chatting_with'] = user_id
-                QUEUE.remove(uid)
-                await context.bot.send_message(user_id, "✅ Suhbat boshlandi!", reply_markup=get_chat_buttons())
-                await context.bot.send_message(uid, "✅ Suhbat boshlandi!", reply_markup=get_chat_buttons())
-                return
-    # Oddiy navbatga qo‘shish
+    for uid in QUEUE:
+        if uid != user_id:
+            USERS[user_id]['chatting_with'] = uid
+            USERS[uid]['chatting_with'] = user_id
+            QUEUE.remove(uid)
+            await context.bot.send_message(user_id, "✅ Suhbat boshlandi!", reply_markup=get_chat_buttons())
+            await context.bot.send_message(uid, "✅ Suhbat boshlandi!", reply_markup=get_chat_buttons())
+            return
     if user_id not in QUEUE:
         QUEUE.append(user_id)
         await context.bot.send_message(user_id, "🔄 Siz navbatga qo‘shildingiz, biroz kuting...")
@@ -189,7 +158,6 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, profile_handler))
     app.add_handler(CallbackQueryHandler(button_handler))
-    # Match funksiyasi avtomatik ishlaydi
 
     print("✅ Bot ishga tushdi...")
     app.run_polling()
