@@ -57,9 +57,9 @@ def register_user(user_id):
     cur.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
     conn.commit()
 
-# 🔘 Start menyusi tugmalari (Aiogram 3 mos)
+# 🔘 Start menyusi tugmalari
 def start_keyboard():
-    keyboard = InlineKeyboardMarkup(
+    return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton("💬 Suhbat", callback_data="chat"),
@@ -74,7 +74,6 @@ def start_keyboard():
             ]
         ]
     )
-    return keyboard
 
 # 🚀 START komandasi
 async def start_cmd(message: types.Message):
