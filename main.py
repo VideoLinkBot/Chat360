@@ -104,7 +104,7 @@ async def profile_cmd(message: types.Message):
             reply_markup=start_keyboard()
         )
     else:
-        await message.answer("❌ Profil topilmadi. /start bosing.")
+        await message.answer("❌ Profil topilmadi. /start bosing.", reply_markup=start_keyboard())
 
 # 🎁 BONUS komandasi
 @dp.message(Command("bonus"))
@@ -114,16 +114,16 @@ async def bonus_cmd(message: types.Message):
     cur.execute("SELECT last_bonus, points, status FROM users WHERE user_id = ?", (user_id,))
     last_bonus, points, status = cur.fetchone()
     if last_bonus == today:
-        await message.answer("❌ Siz bugungi bonusni oldingiz.")
+        await message.answer("❌ Siz bugungi bonusni oldingiz.", reply_markup=start_keyboard())
     else:
         add_points(user_id, 10)
         points += 10
         cur.execute("UPDATE users SET last_bonus = ? WHERE user_id = ?", (today, user_id))
         if points >= 100 and status != 'VIP':
             cur.execute("UPDATE users SET status = 'VIP' WHERE user_id = ?", (user_id,))
-            await message.answer("🎉 Tabriklaymiz! Siz VIP bo‘ldingiz!")
+            await message.answer("🎉 Tabriklaymiz! Siz VIP bo‘ldingiz!", reply_markup=start_keyboard())
         conn.commit()
-        await message.answer("🎁 Siz 10 ball oldingiz!")
+        await message.answer("🎁 Siz 10 ball oldingiz!", reply_markup=start_keyboard())
 
 # 💬 CHAT komandasi (VIP tekshiradi)
 @dp.message(Command("chat"))
@@ -132,7 +132,7 @@ async def chat_cmd(message: types.Message):
     cur.execute("SELECT status FROM users WHERE user_id = ?", (user_id,))
     status = cur.fetchone()[0]
     if status != "VIP":
-        await message.answer("⚠️ Siz hali VIP emassiz. VIP chatlar faqat 100 ball to‘plagan foydalanuvchilar uchun!")
+        await message.answer("⚠️ Siz hali VIP emassiz. VIP chatlar faqat 100 ball to‘plagan foydalanuvchilar uchun!", reply_markup=start_keyboard())
         return
 
     cur.execute("SELECT user_id FROM waiting WHERE user_id != ? LIMIT 1", (user_id,))
@@ -148,7 +148,7 @@ async def chat_cmd(message: types.Message):
     else:
         cur.execute("INSERT OR REPLACE INTO waiting (user_id) VALUES (?)", (user_id,))
         conn.commit()
-        await message.answer("⏳ Suhbatdosh qidirilmoqda...")
+        await message.answer("⏳ Suhbatdosh qidirilmoqda...", reply_markup=start_keyboard())
 
 # 🛑 STOP komandasi
 @dp.message(Command("stop"))
@@ -160,10 +160,10 @@ async def stop_cmd(message: types.Message):
         partner_id = partner[0]
         cur.execute("DELETE FROM active_chats WHERE user_id IN (?, ?)", (user_id, partner_id))
         conn.commit()
-        await bot.send_message(user_id, "❌ Suhbat tugatildi.")
-        await bot.send_message(partner_id, "❌ Suhbat tugatildi.")
+        await bot.send_message(user_id, "❌ Suhbat tugatildi.", reply_markup=start_keyboard())
+        await bot.send_message(partner_id, "❌ Suhbat tugatildi.", reply_markup=start_keyboard())
     else:
-        await message.answer("⚠️ Siz hozir suhbatda emassiz.")
+        await message.answer("⚠️ Siz hozir suhbatda emassiz.", reply_markup=start_keyboard())
 
 # ⏭ NEXT komandasi
 @dp.message(Command("next"))
@@ -179,7 +179,7 @@ async def top_cmd(message: types.Message):
     text = "🏆 Reyting TOP-10:\n\n"
     for i, (uid, points) in enumerate(top_users, start=1):
         text += f"{i}. 👤 {uid} — ⭐ {points} ball\n"
-    await message.answer(text)
+    await message.answer(text, reply_markup=start_keyboard())
 
 # 📩 Callback tugmalarni ishlatish
 @dp.callback_query()
@@ -198,10 +198,11 @@ async def process_callback(callback: types.CallbackQuery):
             "💬 VIP tizimi:\n"
             "✅ Har kuni /bonus orqali ball yig‘ing.\n"
             "✅ 100 ball to‘plaganingizda siz VIP bo‘lasiz.\n"
-            "✅ VIP foydalanuvchilar maxsus chatlarda qizlar bilan suhbatlashadi!"
+            "✅ VIP foydalanuvchilar maxsus chatlarda qizlar bilan suhbatlashadi!",
+            reply_markup=start_keyboard()
         )
     else:
-        await callback.message.answer("❌ Noma'lum tugma.")
+        await callback.message.answer("❌ Noma'lum tugma.", reply_markup=start_keyboard())
     await callback.answer()
 
 # 📩 Xabar yuborish (suhbat ichida)
@@ -215,9 +216,9 @@ async def chat_handler(message: types.Message):
         try:
             await bot.send_message(partner_id, message.text)
         except:
-            await message.answer("⚠️ Xabar yuborilmadi, suhbatdosh offline.")
+            await message.answer("⚠️ Xabar yuborilmadi, suhbatdosh offline.", reply_markup=start_keyboard())
     else:
-        await message.answer("⚠️ Siz hozir suhbatda emassiz. /chat bilan boshlang.")
+        await message.answer("⚠️ Siz hozir suhbatda emassiz. /chat bilan boshlang.", reply_markup=start_keyboard())
 
 # 🚀 BOT ISHGA TUSHIRISH
 if __name__ == "__main__":
