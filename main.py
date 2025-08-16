@@ -225,4 +225,4 @@ dp.message.register(chat_handler)
 
 # 🚀 BOT ISHGA TUSHIRISH
 if __name__ == "__main__":
-    asyncio.run(dp.start_polling())
+    asyncio.run(dp.start_polling(bot))
