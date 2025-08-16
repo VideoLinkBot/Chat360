@@ -55,14 +55,9 @@ def add_points(user_id, amount):
     update_status(user_id)
 
 # 🗂 Foydalanuvchini bazaga qo‘shish
-def register_user(user_id, referrer_id=None):
+def register_user(user_id):
     cur.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
     conn.commit()
-    # Referral bo‘lsa
-    if referrer_id and referrer_id != user_id:
-        cur.execute("UPDATE users SET referrals = referrals + 1 WHERE user_id = ?", (referrer_id,))
-        cur.execute("UPDATE users SET points = points + 5 WHERE user_id = ?", (referrer_id,))
-        conn.commit()
 
 # 🏅 Statusni yangilash
 def update_status(user_id):
@@ -87,9 +82,7 @@ def update_status(user_id):
 @dp.message_handler(commands=['start'])
 async def start_cmd(message: types.Message):
     user_id = message.from_user.id
-    args = message.get_args()  # /start referrer_id
-    referrer_id = int(args) if args.isdigit() else None
-    register_user(user_id, referrer_id)
+    register_user(user_id)
 
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     keyboard.add("🇺🇿 O‘zbek", "🇷🇺 Rus", "🇬🇧 Ingliz")
@@ -111,8 +104,7 @@ async def set_language(message: types.Message):
             "👤 /profile — Profilingiz\n"
             "🎁 /bonus — Kunlik bonus\n"
             "🏆 /top — Reyting\n"
-            "📌 /status — Status tushuntirish\n"
-            "🔗 /referral — Referral linkingiz"
+            "📌 /status — Status tushuntirish"
         )
         help_text = (
             "👋 Assalomu alaykum! Chat360 – bu tez va qiziqarli suhbat topish botidir.\n"
@@ -129,8 +121,7 @@ async def set_language(message: types.Message):
             "👤 /profile — Ваш профиль\n"
             "🎁 /bonus — Ежедневный бонус\n"
             "🏆 /top — Рейтинг\n"
-            "📌 /status — Описание статусов\n"
-            "🔗 /referral — Ваша реферальная ссылка"
+            "📌 /status — Описание статусов"
         )
         help_text = (
             "👋 Привет! Chat360 – это бот для быстрого и интересного поиска собеседника.\n"
@@ -147,8 +138,7 @@ async def set_language(message: types.Message):
             "👤 /profile — Your profile\n"
             "🎁 /bonus — Daily bonus\n"
             "🏆 /top — Ranking\n"
-            "📌 /status — Status explanation\n"
-            "🔗 /referral — Your referral link"
+            "📌 /status — Status explanation"
         )
         help_text = (
             "👋 Hello! Chat360 is a fast and fun chat partner bot.\n"
@@ -159,15 +149,6 @@ async def set_language(message: types.Message):
         )
 
     await message.answer(f"✅ Til o‘rnatildi: {lang.upper()}\n\n{text}\n\n{help_text}")
-
-# ================= Referral link =================
-@dp.message_handler(commands=['referral'])
-async def referral_cmd(message: types.Message):
-    user_id = message.from_user.id
-    bot_username = (await bot.get_me()).username
-    referral_link = f"https://t.me/{bot_username}?start={user_id}"
-    await message.answer(f"🔗 Sizning referral linkingiz:\n{referral_link}\n\n"
-                         "✅ Har bir yangi foydalanuvchi sizning link orqali kelganida, siz +5 ball olasiz!")
 
 # ================= Jins tanlash =================
 @dp.message_handler(commands=['set_gender'])
@@ -254,18 +235,24 @@ async def chat_cmd(message: types.Message):
         return
 
     user_status, user_gender = result
+
+    # Statuslar tartibi: yuqoridan pastga
     status_order = ["VIP", "Gold", "Silver", "Bronze", "Normal"]
 
+    # Qaysi statuslarni qidirish kerakligini aniqlaymiz
     if user_status == "VIP":
-        allowed_statuses = status_order
+        allowed_statuses = status_order  # VIP hamma statusni topishi mumkin
     else:
         index = status_order.index(user_status)
         allowed_statuses = status_order[index:]
 
+    # Kutayotganlar ro'yxatini olish
     cur.execute("SELECT user_id FROM waiting WHERE user_id != ?", (user_id,))
     waiting_users = cur.fetchall()
+
     partner_id = None
 
+    # Status va jinsga qarab mos partner topish
     for w in waiting_users:
         w_id = w[0]
         cur.execute("SELECT status, gender FROM users WHERE user_id = ?", (w_id,))
@@ -330,4 +317,4 @@ async def chat_handler(message: types.Message):
 
 # 🚀 BOT ISHGA TUSHIRISH
 if __name__ == "__main__":
-    executor.start_polling
+    executor.start_polling(dp, skip_updates=True)
