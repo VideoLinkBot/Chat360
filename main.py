@@ -9,7 +9,7 @@ from aiogram.filters import Command
 # 🔑 Token environment variable
 API_TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot=bot)  # Aiogram 3: bot argumenti kerak
+dp = Dispatcher(bot=bot)
 
 # 📂 SQLite baza
 conn = sqlite3.connect("chat360.db", check_same_thread=False)
@@ -57,15 +57,22 @@ def register_user(user_id):
     cur.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
     conn.commit()
 
-# 🔘 Start menyusi tugmalari
+# 🔘 Start menyusi tugmalari (Aiogram 3 mos)
 def start_keyboard():
-    keyboard = InlineKeyboardMarkup(row_width=2)
-    keyboard.add(
-        InlineKeyboardButton("💬 Suhbat", callback_data="chat"),
-        InlineKeyboardButton("🎁 Bonus", callback_data="bonus"),
-        InlineKeyboardButton("👤 Profil", callback_data="profile"),
-        InlineKeyboardButton("🏆 Reyting", callback_data="top"),
-        InlineKeyboardButton("ℹ️ VIP haqida", callback_data="vip_info")
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton("💬 Suhbat", callback_data="chat"),
+                InlineKeyboardButton("🎁 Bonus", callback_data="bonus")
+            ],
+            [
+                InlineKeyboardButton("👤 Profil", callback_data="profile"),
+                InlineKeyboardButton("🏆 Reyting", callback_data="top")
+            ],
+            [
+                InlineKeyboardButton("ℹ️ VIP haqida", callback_data="vip_info")
+            ]
+        ]
     )
     return keyboard
 
