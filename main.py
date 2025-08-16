@@ -9,7 +9,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 API_TOKEN = os.getenv("BOT_TOKEN")
 
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot)
+dp = Dispatcher()  # Aiogram 3: bot argumentisiz
 
 # 📂 SQLite baza
 conn = sqlite3.connect("chat360.db", check_same_thread=False)
@@ -221,4 +221,4 @@ async def chat_handler(message: types.Message):
 
 # 🚀 BOT ISHGA TUSHIRISH
 if __name__ == "__main__":
-    asyncio.run(dp.start_polling())
+    asyncio.run(dp.start_polling(bot))
