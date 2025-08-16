@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS active_chats (
 cur.execute("""
 CREATE TABLE IF NOT EXISTS waiting (
     user_id INTEGER PRIMARY KEY,
-    status TEXT DEFAULT 'Normal'
+    want_gender TEXT DEFAULT 'any'
 )
 """)
 
@@ -106,6 +106,13 @@ async def set_language(message: types.Message):
             "🏆 /top — Reyting\n"
             "📌 /status — Status tushuntirish"
         )
+        help_text = (
+            "👋 Assalomu alaykum! Chat360 – bu tez va qiziqarli suhbat topish botidir.\n"
+            "💎 Foydalanuvchilar statusga ega: Normal, Bronze, Silver, Gold, VIP.\n"
+            "⭐ Har kuni bonuslar to‘plash orqali statusingizni oshirishingiz mumkin.\n"
+            "⚡ Statusingiz qanchalik yuqori bo‘lsa, chat topish tezroq bo‘ladi.\n"
+            "👤 /set_gender — Jinsingizni tanlash"
+        )
     elif lang == "ru":
         text = (
             "💬 /chat — Найти собеседника\n"
@@ -115,6 +122,13 @@ async def set_language(message: types.Message):
             "🎁 /bonus — Ежедневный бонус\n"
             "🏆 /top — Рейтинг\n"
             "📌 /status — Описание статусов"
+        )
+        help_text = (
+            "👋 Привет! Chat360 – это бот для быстрого и интересного поиска собеседника.\n"
+            "💎 Пользователи имеют статусы: Normal, Bronze, Silver, Gold, VIP.\n"
+            "⭐ Ежедневно собирая бонусы, вы можете повышать свой статус.\n"
+            "⚡ Чем выше ваш статус, тем быстрее ищется чат.\n"
+            "👤 /set_gender — Выберите ваш пол"
         )
     else:
         text = (
@@ -126,8 +140,30 @@ async def set_language(message: types.Message):
             "🏆 /top — Ranking\n"
             "📌 /status — Status explanation"
         )
+        help_text = (
+            "👋 Hello! Chat360 is a fast and fun chat partner bot.\n"
+            "💎 Users have statuses: Normal, Bronze, Silver, Gold, VIP.\n"
+            "⭐ Collect daily bonuses to increase your status.\n"
+            "⚡ The higher your status, the faster your chat will be found.\n"
+            "👤 /set_gender — Set your gender"
+        )
 
-    await message.answer(f"✅ Til o‘rnatildi: {lang.upper()}\n\n{text}")
+    await message.answer(f"✅ Til o‘rnatildi: {lang.upper()}\n\n{text}\n\n{help_text}")
+
+# ================= Jins tanlash =================
+@dp.message_handler(commands=['set_gender'])
+async def set_gender_cmd(message: types.Message):
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    keyboard.add("O‘g‘il", "Qiz")
+    await message.answer("Siz qaysi jinsdasiz?", reply_markup=keyboard)
+
+@dp.message_handler(lambda message: message.text in ["O‘g‘il", "Qiz"])
+async def save_gender(message: types.Message):
+    user_id = message.from_user.id
+    gender = "male" if message.text == "O‘g‘il" else "female"
+    cur.execute("UPDATE users SET gender = ? WHERE user_id = ?", (gender, user_id))
+    conn.commit()
+    await message.answer(f"Sizning jinsingiz saqlandi: {message.text}", reply_markup=types.ReplyKeyboardRemove())
 
 # ================= Kunlik bonus =================
 @dp.message_handler(commands=['bonus'])
@@ -140,6 +176,7 @@ async def bonus_cmd(message: types.Message):
     if last_bonus == today:
         await message.answer("❌ Siz bugungi bonusni oldingiz.")
     else:
+        # Statusga qarab ball
         status_bonus = {
             'Normal': (3,5),
             'Bronze': (5,8),
@@ -163,11 +200,7 @@ async def profile_cmd(message: types.Message):
     if data:
         points, referrals, status = data
         status_emoji = {
-            'Normal':'⚪', 
-            'Bronze':'🟫', 
-            'Silver':'🟦', 
-            'Gold':'🟨', 
-            'VIP':'🟪✨'
+            'Normal':'⚪', 'Bronze':'🟫', 'Silver':'🟦', 'Gold':'🟨', 'VIP':'🟪'
         }
         await message.answer(
             f"{status_emoji.get(status,'⚪')} Profilingiz:\n\n"
@@ -183,31 +216,44 @@ async def profile_cmd(message: types.Message):
 async def status_info(message: types.Message):
     text = (
         "🔥 Chat360 Status Tizimi:\n\n"
-        "⚪ Normal — Har kuni 3–5 ball, chat oddiy tezlikda\n"
-        "🟫 Bronze — Har kuni 5–8 ball, chat biroz tezroq\n"
-        "🟦 Silver — Har kuni 8–12 ball, chat tezroq\n"
-        "🟨 Gold — Har kuni 12–15 ball, chat juda tez\n"
-        "🟪✨ VIP — Har kuni 15–20 ball, chat eng tez, profil ajralib turadi!\n\n"
+        "⚪ Normal — Har kuni 3–5 ball\n"
+        "🟫 Bronze — Har kuni 5–8 ball\n"
+        "🟦 Silver — Har kuni 8–12 ball\n"
+        "🟨 Gold — Har kuni 12–15 ball\n"
+        "🟪 VIP — Har kuni 15–20 ball\n\n"
         "⭐ Status qanchalik yuqori bo‘lsa, chat tezroq topiladi va profil boshqalardan ajralib turadi!"
     )
     await message.answer(text)
 
-# ================= CHAT komandasi =================
+# ================= CHAT komandasi (aks jins + VIP ustun) =================
 @dp.message_handler(commands=['chat'])
 async def chat_cmd(message: types.Message):
     user_id = message.from_user.id
-    cur.execute("SELECT status FROM users WHERE user_id = ?", (user_id,))
-    status = cur.fetchone()[0]
+    cur.execute("SELECT status, gender FROM users WHERE user_id = ?", (user_id,))
+    result = cur.fetchone()
+    status = result[0]
+    gender = result[1]
 
-    priority_order = {'VIP':1, 'Gold':2, 'Silver':3, 'Bronze':4, 'Normal':5}
-    cur.execute("SELECT user_id, status FROM waiting WHERE user_id != ? ORDER BY status ASC, user_id ASC", (user_id,))
-    waiting_list = cur.fetchall()
-    
+    # Waiting listdan barcha foydalanuvchilarni olish
+    cur.execute("SELECT user_id FROM waiting WHERE user_id != ?", (user_id,))
+    partners = cur.fetchall()
+
     partner_id = None
-    for uid, ustatus in waiting_list:
-        if priority_order.get(ustatus, 5) >= priority_order.get(status, 5):
-            partner_id = uid
-            break
+    # VIP foydalanuvchilarni oldin tekshirish
+    vip_partners = []
+    normal_partners = []
+    for p in partners:
+        cur.execute("SELECT gender, status FROM users WHERE user_id = ?", (p[0],))
+        p_gender, p_status = cur.fetchone()
+        if p_gender != gender and p_gender != "none":
+            if p_status == "VIP":
+                vip_partners.append(p[0])
+            else:
+                normal_partners.append(p[0])
+    if vip_partners:
+        partner_id = vip_partners[0]
+    elif normal_partners:
+        partner_id = normal_partners[0]
 
     if partner_id:
         cur.execute("DELETE FROM waiting WHERE user_id IN (?, ?)", (user_id, partner_id))
@@ -217,7 +263,7 @@ async def chat_cmd(message: types.Message):
         await bot.send_message(user_id, "✅ Suhbatdosh topildi! 💬")
         await bot.send_message(partner_id, "✅ Suhbatdosh topildi! 💬")
     else:
-        cur.execute("INSERT OR REPLACE INTO waiting (user_id, status) VALUES (?, ?)", (user_id, status))
+        cur.execute("INSERT OR REPLACE INTO waiting (user_id) VALUES (?)", (user_id,))
         conn.commit()
         await message.answer("⏳ Suhbatdosh qidirilmoqda...")
 
