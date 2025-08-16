@@ -100,13 +100,13 @@ async def set_language(message: types.Message):
     conn.commit()
     await message.answer(f"✅ Til o‘rnatildi: {lang.upper()}")
 
-# 4️⃣ Media xabarlar
+# 4️⃣ Media xabarlar (faqat suhbatda)
 @dp.message_handler(content_types=types.ContentTypes.ANY)
 async def chat_media_handler(message: types.Message):
     user_id = message.from_user.id
     cur.execute("SELECT partner_id FROM active_chats WHERE user_id = ?", (user_id,))
     partner = cur.fetchone()
-    if partner:
+    if partner:  # Faqat suhbatga ulangan bo‘lsa
         partner_id = partner[0]
         if message.content_type == 'text':
             await bot.send_message(partner_id, message.text)
@@ -119,7 +119,7 @@ async def chat_media_handler(message: types.Message):
         else:
             await bot.send_message(user_id, "⚠️ Bu turdagi xabar hali qo‘llab-quvvatlanmaydi.")
     else:
-        await message.answer("⚠️ Siz hozir suhbatda emassiz.")
+        pass  # Foydalanuvchi suhbatda bo‘lmasa hech narsa yubormaydi
 
 # ===================================================================
 
@@ -215,6 +215,17 @@ async def top_cmd(message: types.Message):
         text += f"{i}. 👤 {uid} — ⭐ {points} ball\n"
 
     await message.answer(text)
+
+# 📩 Oddiy matn xabarlar (faqat suhbatda)
+@dp.message_handler()
+async def chat_handler(message: types.Message):
+    user_id = message.from_user.id
+    cur.execute("SELECT partner_id FROM active_chats WHERE user_id = ?", (user_id,))
+    partner = cur.fetchone()
+
+    if partner:
+        partner_id = partner[0]
+        await bot.send_message(partner_id, message.text)
 
 # 🚀 BOT ISHGA TUSHIRISH
 if __name__ == "__main__":
