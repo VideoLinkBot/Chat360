@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS users (
     gender TEXT DEFAULT 'none',
     points INTEGER DEFAULT 0,
     referrals INTEGER DEFAULT 0,
-    status TEXT DEFAULT 'Normal',
+    status TEXT DEFAULT 'normal',
     want_gender TEXT DEFAULT 'any',
     country TEXT DEFAULT 'unknown',
     lang TEXT DEFAULT 'unknown',
@@ -38,12 +38,11 @@ CREATE TABLE IF NOT EXISTS active_chats (
 )
 """)
 
-# ⏳ Waiting list (status ustuni qo‘shildi)
+# ⏳ Waiting list
 cur.execute("""
 CREATE TABLE IF NOT EXISTS waiting (
     user_id INTEGER PRIMARY KEY,
-    want_gender TEXT DEFAULT 'any',
-    status TEXT DEFAULT 'Normal'
+    want_gender TEXT DEFAULT 'any'
 )
 """)
 
@@ -143,13 +142,13 @@ async def bonus_cmd(message: types.Message):
     else:
         # Statusga qarab ball
         status_bonus = {
-            'Normal': (3,5),
-            'Bronze': (5,8),
-            'Silver': (8,12),
-            'Gold': (12,15),
+            'Normal': (2,4),
+            'Bronze': (4,7),
+            'Silver': (7,11),
+            'Gold': (11,14),
             'VIP': (15,20)
         }
-        low, high = status_bonus.get(status, (3,5))
+        low, high = status_bonus.get(status, (2,4))
         points = random.randint(low, high)
         add_points(user_id, points)
         cur.execute("UPDATE users SET last_bonus = ? WHERE user_id = ?", (today, user_id))
@@ -181,45 +180,39 @@ async def profile_cmd(message: types.Message):
 async def status_info(message: types.Message):
     text = (
         "🔥 Chat360 Status Tizimi:\n\n"
-        "⚪ Normal — Har kuni 3–5 ball\n"
-        "🟫 Bronze — Har kuni 5–8 ball\n"
-        "🟦 Silver — Har kuni 8–12 ball\n"
-        "🟨 Gold — Har kuni 12–15 ball\n"
+        "⚪ Normal — Har kuni 2–4 ball\n"
+        "🟫 Bronze — Har kuni 4–7 ball\n"
+        "🟦 Silver — Har kuni 7–11 ball\n"
+        "🟨 Gold — Har kuni 11–14 ball\n"
         "🟪 VIP — Har kuni 15–20 ball\n\n"
         "⭐ Status qanchalik yuqori bo‘lsa, chat tezroq topiladi va profil boshqalardan ajralib turadi!"
     )
     await message.answer(text)
 
-# ================= CHAT komandasi (VIP tezlik qo‘shildi) =================
+# ================= CHAT komandasi =================
 @dp.message_handler(commands=['chat'])
 async def chat_cmd(message: types.Message):
     user_id = message.from_user.id
     cur.execute("SELECT status FROM users WHERE user_id = ?", (user_id,))
     status = cur.fetchone()[0]
 
-    # Foydalanuvchini waiting ga status bilan qo'shamiz
-    cur.execute("INSERT OR REPLACE INTO waiting (user_id, status) VALUES (?, ?)", (user_id, status))
-    conn.commit()
+    status_priority = {
+        'VIP': 1,
+        'Gold': 2,
+        'Silver': 3,
+        'Bronze': 4,
+        'Normal': 5
+    }
 
-    # Statusga qarab ustuvorlik: VIP > Gold > Silver > Bronze > Normal
-    priority = ['VIP','Gold','Silver','Bronze','Normal']
-    partner = None
-    for s in priority:
-        if s == status:
-            continue
-        cur.execute("SELECT user_id FROM waiting WHERE user_id != ? AND status = ? ORDER BY user_id LIMIT 1", (user_id, s))
-        partner = cur.fetchone()
-        if partner:
+    cur.execute("SELECT user_id, status FROM waiting WHERE user_id != ? ORDER BY rowid ASC", (user_id,))
+    waiting_list = cur.fetchall()
+    
+    partner_id = None
+    for w_id, w_status in waiting_list:
+        if status_priority[status] <= status_priority[w_status]:
+            partner_id = w_id
             break
-
-    # Shu statusdagi foydalanuvchilar orasidan topilmasa o'z statusida qidiring
-    if not partner:
-        cur.execute("SELECT user_id FROM waiting WHERE user_id != ? AND status = ? ORDER BY user_id LIMIT 1", (user_id, status))
-        partner = cur.fetchone()
-
-    if partner:
-        partner_id = partner[0]
-        # Active chats va waiting dan o'chirish
+    if partner_id:
         cur.execute("DELETE FROM waiting WHERE user_id IN (?, ?)", (user_id, partner_id))
         cur.execute("INSERT OR REPLACE INTO active_chats (user_id, partner_id) VALUES (?, ?)", (user_id, partner_id))
         cur.execute("INSERT OR REPLACE INTO active_chats (user_id, partner_id) VALUES (?, ?)", (partner_id, user_id))
@@ -227,6 +220,8 @@ async def chat_cmd(message: types.Message):
         await bot.send_message(user_id, "✅ Suhbatdosh topildi! 💬")
         await bot.send_message(partner_id, "✅ Suhbatdosh topildi! 💬")
     else:
+        cur.execute("INSERT OR REPLACE INTO waiting (user_id) VALUES (?)", (user_id,))
+        conn.commit()
         await message.answer("⏳ Suhbatdosh qidirilmoqda...")
 
 # ================= STOP =================
