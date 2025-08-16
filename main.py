@@ -6,15 +6,16 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 
+# 🔑 Token environment variable
 API_TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot=bot)  # Aiogram 3: bot argumenti kerak
 
-# SQLite bazaga ulanish
+# 📂 SQLite baza
 conn = sqlite3.connect("chat360.db", check_same_thread=False)
 cur = conn.cursor()
 
-# Users jadvali
+# 👤 Users jadvali
 cur.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
@@ -29,7 +30,7 @@ CREATE TABLE IF NOT EXISTS users (
 )
 """)
 
-# Active chats
+# 🔗 Active chats
 cur.execute("""
 CREATE TABLE IF NOT EXISTS active_chats (
     user_id INTEGER PRIMARY KEY,
@@ -37,7 +38,7 @@ CREATE TABLE IF NOT EXISTS active_chats (
 )
 """)
 
-# Waiting list
+# ⏳ Waiting list
 cur.execute("""
 CREATE TABLE IF NOT EXISTS waiting (
     user_id INTEGER PRIMARY KEY,
@@ -46,17 +47,17 @@ CREATE TABLE IF NOT EXISTS waiting (
 """)
 conn.commit()
 
-# Ball qo‘shish
+# 🎁 Ball qo‘shish
 def add_points(user_id, amount):
     cur.execute("UPDATE users SET points = points + ? WHERE user_id = ?", (amount, user_id))
     conn.commit()
 
-# Foydalanuvchini bazaga qo‘shish
+# 🗂 Foydalanuvchini bazaga qo‘shish
 def register_user(user_id):
     cur.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
     conn.commit()
 
-# Start menyusi
+# 🔘 Start menyusi tugmalari
 def start_keyboard():
     keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
@@ -68,8 +69,7 @@ def start_keyboard():
     )
     return keyboard
 
-# START komandasi
-@dp.message(Command("start"))
+# 🚀 START komandasi
 async def start_cmd(message: types.Message):
     user_id = message.from_user.id
     register_user(user_id)
@@ -83,9 +83,9 @@ async def start_cmd(message: types.Message):
         "ℹ️ VIP haqida — VIP tizimi haqida ma’lumot",
         reply_markup=start_keyboard()
     )
+dp.message.register(start_cmd, Command("start"))
 
-# PROFILE komandasi
-@dp.message(Command("profile"))
+# 👤 PROFILE komandasi
 async def profile_cmd(message: types.Message):
     user_id = message.from_user.id
     cur.execute("SELECT points, referrals, status FROM users WHERE user_id = ?", (user_id,))
@@ -103,9 +103,9 @@ async def profile_cmd(message: types.Message):
         )
     else:
         await message.answer("❌ Profil topilmadi. /start bosing.", reply_markup=start_keyboard())
+dp.message.register(profile_cmd, Command("profile"))
 
-# BONUS komandasi
-@dp.message(Command("bonus"))
+# 🎁 BONUS komandasi
 async def bonus_cmd(message: types.Message):
     user_id = message.from_user.id
     today = str(datetime.date.today())
@@ -126,9 +126,9 @@ async def bonus_cmd(message: types.Message):
             await message.answer("🎉 Tabriklaymiz! Siz VIP bo‘ldingiz!", reply_markup=start_keyboard())
         conn.commit()
         await message.answer("🎁 Siz 10 ball oldingiz!", reply_markup=start_keyboard())
+dp.message.register(bonus_cmd, Command("bonus"))
 
-# CHAT komandasi
-@dp.message(Command("chat"))
+# 💬 CHAT komandasi
 async def chat_cmd(message: types.Message):
     user_id = message.from_user.id
     cur.execute("SELECT status FROM users WHERE user_id = ?", (user_id,))
@@ -151,9 +151,9 @@ async def chat_cmd(message: types.Message):
         cur.execute("INSERT OR REPLACE INTO waiting (user_id) VALUES (?)", (user_id,))
         conn.commit()
         await message.answer("⏳ Suhbatdosh qidirilmoqda...", reply_markup=start_keyboard())
+dp.message.register(chat_cmd, Command("chat"))
 
-# STOP komandasi
-@dp.message(Command("stop"))
+# 🛑 STOP komandasi
 async def stop_cmd(message: types.Message):
     user_id = message.from_user.id
     cur.execute("SELECT partner_id FROM active_chats WHERE user_id = ?", (user_id,))
@@ -166,15 +166,15 @@ async def stop_cmd(message: types.Message):
         await bot.send_message(partner_id, "❌ Suhbat tugatildi.", reply_markup=start_keyboard())
     else:
         await message.answer("⚠️ Siz hozir suhbatda emassiz.", reply_markup=start_keyboard())
+dp.message.register(stop_cmd, Command("stop"))
 
-# NEXT komandasi
-@dp.message(Command("next"))
+# ⏭ NEXT komandasi
 async def next_cmd(message: types.Message):
     await stop_cmd(message)
     await chat_cmd(message)
+dp.message.register(next_cmd, Command("next"))
 
-# TOP komandasi
-@dp.message(Command("top"))
+# 🏆 TOP komandasi
 async def top_cmd(message: types.Message):
     cur.execute("SELECT user_id, points FROM users ORDER BY points DESC LIMIT 10")
     top_users = cur.fetchall()
@@ -182,9 +182,9 @@ async def top_cmd(message: types.Message):
     for i, (uid, points) in enumerate(top_users, start=1):
         text += f"{i}. 👤 {uid} — ⭐ {points} ball\n"
     await message.answer(text, reply_markup=start_keyboard())
+dp.message.register(top_cmd, Command("top"))
 
-# Callback tugmalar
-@dp.callback_query_handler()
+# 📩 Callback tugmalarni ishlatish
 async def process_callback(callback: types.CallbackQuery):
     data = callback.data
     if data == "chat":
@@ -206,9 +206,9 @@ async def process_callback(callback: types.CallbackQuery):
     else:
         await callback.message.answer("❌ Noma'lum tugma.", reply_markup=start_keyboard())
     await callback.answer()
+dp.callback_query.register(process_callback)
 
-# Xabarlarni suhbat orqali jo‘natish
-@dp.message_handler()
+# 📩 Xabar yuborish (suhbat ichida)
 async def chat_handler(message: types.Message):
     user_id = message.from_user.id
     cur.execute("SELECT partner_id FROM active_chats WHERE user_id = ?", (user_id,))
@@ -221,7 +221,8 @@ async def chat_handler(message: types.Message):
             await message.answer("⚠️ Xabar yuborilmadi, suhbatdosh offline.", reply_markup=start_keyboard())
     else:
         await message.answer("⚠️ Siz hozir suhbatda emassiz. /chat bilan boshlang.", reply_markup=start_keyboard())
+dp.message.register(chat_handler)
 
-# BOT ishga tushirish
+# 🚀 BOT ISHGA TUSHIRISH
 if __name__ == "__main__":
     asyncio.run(dp.start_polling())
