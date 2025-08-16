@@ -225,37 +225,47 @@ async def status_info(message: types.Message):
     )
     await message.answer(text)
 
-# ================= CHAT komandasi (aks jins + VIP ustun) =================
+# ================= CHAT komandasi (status + jins) =================
 @dp.message_handler(commands=['chat'])
 async def chat_cmd(message: types.Message):
     user_id = message.from_user.id
     cur.execute("SELECT status, gender FROM users WHERE user_id = ?", (user_id,))
     result = cur.fetchone()
-    status = result[0]
-    gender = result[1]
+    if not result:
+        await message.answer("❌ Siz ro‘yxatda topilmadingiz. /start bosing.")
+        return
 
-    # Waiting listdan barcha foydalanuvchilarni olish
+    user_status, user_gender = result
+
+    # Statuslar tartibi: yuqoridan pastga
+    status_order = ["VIP", "Gold", "Silver", "Bronze", "Normal"]
+
+    # Qaysi statuslarni qidirish kerakligini aniqlaymiz
+    if user_status == "VIP":
+        allowed_statuses = status_order  # VIP hamma statusni topishi mumkin
+    else:
+        # Foydalanuvchi VIP bo'lmasa, faqat o'z statusi va pastdagilar
+        index = status_order.index(user_status)
+        allowed_statuses = status_order[index:]
+
+    # Kutayotganlar ro'yxatini olish
     cur.execute("SELECT user_id FROM waiting WHERE user_id != ?", (user_id,))
-    partners = cur.fetchall()
+    waiting_users = cur.fetchall()
 
     partner_id = None
-    # VIP foydalanuvchilarni oldin tekshirish
-    vip_partners = []
-    normal_partners = []
-    for p in partners:
-        cur.execute("SELECT gender, status FROM users WHERE user_id = ?", (p[0],))
-        p_gender, p_status = cur.fetchone()
-        if p_gender != gender and p_gender != "none":
-            if p_status == "VIP":
-                vip_partners.append(p[0])
-            else:
-                normal_partners.append(p[0])
-    if vip_partners:
-        partner_id = vip_partners[0]
-    elif normal_partners:
-        partner_id = normal_partners[0]
+    # Status va jinsga qarab mos partner topish
+    for w in waiting_users:
+        w_id = w[0]
+        cur.execute("SELECT status, gender FROM users WHERE user_id = ?", (w_id,))
+        w_status, w_gender = cur.fetchone()
+
+        # Status mos va aks jins bo‘lsa
+        if w_status in allowed_statuses and w_gender != user_gender and w_gender != "none":
+            partner_id = w_id
+            break
 
     if partner_id:
+        # Active chats ga qo'shish va waiting dan o'chirish
         cur.execute("DELETE FROM waiting WHERE user_id IN (?, ?)", (user_id, partner_id))
         cur.execute("INSERT OR REPLACE INTO active_chats (user_id, partner_id) VALUES (?, ?)", (user_id, partner_id))
         cur.execute("INSERT OR REPLACE INTO active_chats (user_id, partner_id) VALUES (?, ?)", (partner_id, user_id))
