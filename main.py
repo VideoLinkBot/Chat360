@@ -1,4 +1,4 @@
-import os
+   import os
 import sqlite3
 import random
 import datetime
@@ -58,6 +58,8 @@ def register_user(user_id):
     cur.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
     conn.commit()
 
+# ===================== Qo‘shimcha funksiyalar =====================
+
 # 1️⃣ Referral tizimi
 def register_user_with_ref(user_id, referrer_id=None):
     register_user(user_id)
@@ -83,36 +85,61 @@ async def bonus_cmd_random(message: types.Message):
         conn.commit()
         await message.answer(f"🎁 Tabriklaymiz! Siz {bonus_points} ball oldingiz.")
 
-# 3️⃣ Til tanlash
-@dp.message_handler(commands=['settings'])
-async def settings_cmd(message: types.Message):
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    keyboard.add("🇺🇿 O‘zbek", "🇷🇺 Rus", "🇬🇧 Ingliz")
-    await message.answer("Tilni tanlang:", reply_markup=keyboard)
+# ===================== TIL TANLASH VA BOSHLANGICH DIZAYN =====================
 
-@dp.message_handler(lambda message: message.text in ["🇺🇿 O‘zbek", "🇷🇺 Rus", "🇬🇧 Ingliz"])
-async def set_language(message: types.Message):
-    lang_map = {"🇺🇿 O‘zbek": "uz", "🇷🇺 Rus": "ru", "🇬🇧 Ingliz": "en"}
-    lang = lang_map[message.text]
-    cur.execute("UPDATE users SET lang = ? WHERE user_id = ?", (lang, message.from_user.id))
-    conn.commit()
-    await message.answer(f"✅ Til o‘rnatildi: {lang.upper()}")
-
-# 🚀 START komandasi
+# Til tanlash tugmalari
 @dp.message_handler(commands=['start'])
 async def start_cmd(message: types.Message):
     user_id = message.from_user.id
     register_user(user_id)
 
-    await message.answer(
-        "👋 Assalomu alaykum, Chat360 ga xush kelibsiz!\n\n"
-        "💬 /chat — Suhbatdosh topish\n"
-        "⏭ /next — Keyingi suhbatdosh\n"
-        "🛑 /stop — Suhbatni to‘xtatish\n"
-        "👤 /profile — Profilingiz\n"
-        "🎁 /bonus — Kunlik bonus\n"
-        "🏆 /top — Reyting\n"
-    )
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    keyboard.add("🇺🇿 O‘zbek", "🇷🇺 Rus", "🇬🇧 Ingliz")
+
+    await message.answer("🔧 Tilni tanlang / Choose language / Выберите язык:", reply_markup=keyboard)
+
+# Tilni saqlash va boshlangich dizayn chiqarish
+@dp.message_handler(lambda message: message.text in ["🇺🇿 O‘zbek", "🇷🇺 Rus", "🇬🇧 Ingliz"])
+async def set_language(message: types.Message):
+    user_id = message.from_user.id
+    lang_map = {"🇺🇿 O‘zbek": "uz", "🇷🇺 Rus": "ru", "🇬🇧 Ingliz": "en"}
+    lang = lang_map[message.text]
+    cur.execute("UPDATE users SET lang = ? WHERE user_id = ?", (lang, user_id))
+    conn.commit()
+
+    # Tanlangan tilga mos start matni
+    if lang == "uz":
+        text = (
+            "👋 Assalomu alaykum, Chat360 ga xush kelibsiz!\n\n"
+            "💬 /chat — Suhbatdosh topish\n"
+            "⏭ /next — Keyingi suhbatdosh\n"
+            "🛑 /stop — Suhbatni to‘xtatish\n"
+            "👤 /profile — Profilingiz\n"
+            "🎁 /bonus — Kunlik bonus\n"
+            "🏆 /top — Reyting\n"
+        )
+    elif lang == "ru":
+        text = (
+            "👋 Добро пожаловать в Chat360!\n\n"
+            "💬 /chat — Найти собеседника\n"
+            "⏭ /next — Следующий собеседник\n"
+            "🛑 /stop — Остановить чат\n"
+            "👤 /profile — Ваш профиль\n"
+            "🎁 /bonus — Ежедневный бонус\n"
+            "🏆 /top — Рейтинг\n"
+        )
+    else:  # en
+        text = (
+            "👋 Welcome to Chat360!\n\n"
+            "💬 /chat — Find a chat partner\n"
+            "⏭ /next — Next partner\n"
+            "🛑 /stop — Stop chat\n"
+            "👤 /profile — Your profile\n"
+            "🎁 /bonus — Daily bonus\n"
+            "🏆 /top — Rating\n"
+        )
+
+    await message.answer(text)
 
 # 👤 PROFILE komandasi
 @dp.message_handler(commands=['profile'])
@@ -175,6 +202,7 @@ async def stop_cmd(message: types.Message):
 # ⏭ NEXT komandasi
 @dp.message_handler(commands=['next'])
 async def next_cmd(message: types.Message):
+    user_id = message.from_user.id
     await stop_cmd(message)  # Avvalgi suhbatni tugatish
     await chat_cmd(message)  # Yangi suhbat qidirish
 
@@ -203,4 +231,4 @@ async def chat_handler(message: types.Message):
 
 # 🚀 BOT ISHGA TUSHIRISH
 if __name__ == "__main__":
-    executor.start_polling(dp, skip_updates=True)
+    executor.start_polling(dp, skip_updates=True) 
