@@ -58,8 +58,6 @@ def register_user(user_id):
     cur.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
     conn.commit()
 
-# ===================== Qo‘shimcha funksiyalar =====================
-
 # 1️⃣ Referral tizimi
 def register_user_with_ref(user_id, referrer_id=None):
     register_user(user_id)
@@ -99,29 +97,6 @@ async def set_language(message: types.Message):
     cur.execute("UPDATE users SET lang = ? WHERE user_id = ?", (lang, message.from_user.id))
     conn.commit()
     await message.answer(f"✅ Til o‘rnatildi: {lang.upper()}")
-
-# 4️⃣ Media xabarlar (faqat suhbatda)
-@dp.message_handler(content_types=types.ContentTypes.ANY)
-async def chat_media_handler(message: types.Message):
-    user_id = message.from_user.id
-    cur.execute("SELECT partner_id FROM active_chats WHERE user_id = ?", (user_id,))
-    partner = cur.fetchone()
-    if partner:  # Faqat suhbatga ulangan bo‘lsa
-        partner_id = partner[0]
-        if message.content_type == 'text':
-            await bot.send_message(partner_id, message.text)
-        elif message.content_type == 'photo':
-            await bot.send_photo(partner_id, message.photo[-1].file_id, caption=message.caption)
-        elif message.content_type == 'video':
-            await bot.send_video(partner_id, message.video.file_id, caption=message.caption)
-        elif message.content_type == 'voice':
-            await bot.send_voice(partner_id, message.voice.file_id)
-        else:
-            await bot.send_message(user_id, "⚠️ Bu turdagi xabar hali qo‘llab-quvvatlanmaydi.")
-    else:
-        pass  # Foydalanuvchi suhbatda bo‘lmasa hech narsa yubormaydi
-
-# ===================================================================
 
 # 🚀 START komandasi
 @dp.message_handler(commands=['start'])
@@ -200,7 +175,6 @@ async def stop_cmd(message: types.Message):
 # ⏭ NEXT komandasi
 @dp.message_handler(commands=['next'])
 async def next_cmd(message: types.Message):
-    user_id = message.from_user.id
     await stop_cmd(message)  # Avvalgi suhbatni tugatish
     await chat_cmd(message)  # Yangi suhbat qidirish
 
