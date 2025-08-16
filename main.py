@@ -4,6 +4,7 @@ import datetime
 import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.filters import Command
 
 # 🔑 Token environment variables'dan olinadi
 API_TOKEN = os.getenv("BOT_TOKEN")
@@ -70,7 +71,7 @@ def start_keyboard():
     return keyboard
 
 # 🚀 START komandasi
-@dp.message(commands=['start'])
+@dp.message(Command("start"))
 async def start_cmd(message: types.Message):
     user_id = message.from_user.id
     register_user(user_id)
@@ -86,7 +87,7 @@ async def start_cmd(message: types.Message):
     )
 
 # 👤 PROFILE komandasi
-@dp.message(commands=['profile'])
+@dp.message(Command("profile"))
 async def profile_cmd(message: types.Message):
     user_id = message.from_user.id
     cur.execute("SELECT points, referrals, status FROM users WHERE user_id = ?", (user_id,))
@@ -106,7 +107,7 @@ async def profile_cmd(message: types.Message):
         await message.answer("❌ Profil topilmadi. /start bosing.")
 
 # 🎁 BONUS komandasi
-@dp.message(commands=['bonus'])
+@dp.message(Command("bonus"))
 async def bonus_cmd(message: types.Message):
     user_id = message.from_user.id
     today = str(datetime.date.today())
@@ -118,7 +119,6 @@ async def bonus_cmd(message: types.Message):
         add_points(user_id, 10)
         points += 10
         cur.execute("UPDATE users SET last_bonus = ? WHERE user_id = ?", (today, user_id))
-        # VIP holatini tekshirish
         if points >= 100 and status != 'VIP':
             cur.execute("UPDATE users SET status = 'VIP' WHERE user_id = ?", (user_id,))
             await message.answer("🎉 Tabriklaymiz! Siz VIP bo‘ldingiz!")
@@ -126,7 +126,7 @@ async def bonus_cmd(message: types.Message):
         await message.answer("🎁 Siz 10 ball oldingiz!")
 
 # 💬 CHAT komandasi (VIP tekshiradi)
-@dp.message(commands=['chat'])
+@dp.message(Command("chat"))
 async def chat_cmd(message: types.Message):
     user_id = message.from_user.id
     cur.execute("SELECT status FROM users WHERE user_id = ?", (user_id,))
@@ -151,7 +151,7 @@ async def chat_cmd(message: types.Message):
         await message.answer("⏳ Suhbatdosh qidirilmoqda...")
 
 # 🛑 STOP komandasi
-@dp.message(commands=['stop'])
+@dp.message(Command("stop"))
 async def stop_cmd(message: types.Message):
     user_id = message.from_user.id
     cur.execute("SELECT partner_id FROM active_chats WHERE user_id = ?", (user_id,))
@@ -166,13 +166,13 @@ async def stop_cmd(message: types.Message):
         await message.answer("⚠️ Siz hozir suhbatda emassiz.")
 
 # ⏭ NEXT komandasi
-@dp.message(commands=['next'])
+@dp.message(Command("next"))
 async def next_cmd(message: types.Message):
     await stop_cmd(message)
     await chat_cmd(message)
 
 # 🏆 TOP komandasi
-@dp.message(commands=['top'])
+@dp.message(Command("top"))
 async def top_cmd(message: types.Message):
     cur.execute("SELECT user_id, points FROM users ORDER BY points DESC LIMIT 10")
     top_users = cur.fetchall()
