@@ -33,6 +33,16 @@ CREATE TABLE IF NOT EXISTS users (
 )
 """)
 
+# === NEW: foydalanuvchi nomlarini saqlash uchun maydonlar (migration yengil usul) ===
+try:
+    cur.execute("ALTER TABLE users ADD COLUMN username TEXT DEFAULT ''")
+except sqlite3.OperationalError:
+    pass
+try:
+    cur.execute("ALTER TABLE users ADD COLUMN first_name TEXT DEFAULT ''")
+except sqlite3.OperationalError:
+    pass
+
 # 🔗 Active chats
 cur.execute("""
 CREATE TABLE IF NOT EXISTS active_chats (
@@ -59,14 +69,18 @@ def add_points(user_id, amount):
     update_status(user_id)
 
 # 🗂 Foydalanuvchini bazaga qo‘shish
-def register_user(user_id):
+def register_user(user_id, username="", first_name=""):
     cur.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+    # doimiy yangilab turamiz (username o‘zgarishi mumkin)
+    cur.execute("UPDATE users SET username=?, first_name=? WHERE user_id=?",
+                (username or "", first_name or "", user_id))
     conn.commit()
 
 # 🏅 Statusni yangilash
 def update_status(user_id):
     cur.execute("SELECT points FROM users WHERE user_id = ?", (user_id,))
-    points = cur.fetchone()[0]
+    row = cur.fetchone()
+    points = row[0] if row else 0
 
     if points >= 150:
         status = 'VIP'
@@ -82,11 +96,37 @@ def update_status(user_id):
     cur.execute("UPDATE users SET status = ? WHERE user_id = ?", (status, user_id))
     conn.commit()
 
-# ================= Til tanlash =================
+# ================= Til tanlash + Referral =================
 @dp.message_handler(commands=['start'])
 async def start_cmd(message: types.Message):
     user_id = message.from_user.id
-    register_user(user_id)
+    username = (message.from_user.username or "") if message.from_user else ""
+    first_name = (message.from_user.first_name or "") if message.from_user else ""
+    register_user(user_id, username, first_name)
+
+    # === NEW: referral deep-link qayd qilish ===
+    parts = message.text.split(maxsplit=1)
+    if len(parts) == 2:
+        payload = parts[1].strip()
+        if payload.isdigit():
+            inviter_id = int(payload)
+            if inviter_id != user_id:
+                # faqat birinchi marta hisoblash uchun: agar foydalanuvchi yangimi?
+                cur.execute("SELECT referrals FROM users WHERE user_id=?", (user_id,))
+                exists = cur.fetchone()
+                # Garantiyaga: faqat yangi userlarni "birinchi marta kirganda" referal qilish
+                # (oddiy holatda INSERT OR IGNORE yuqorida bajarilgan, shuning uchun
+                # foydalanuvchi yangiligi bo'yicha sodda tekshiruvga o'tamiz)
+                # Yon ta'sirlarni oldini olish uchun tekshiramiz: agar points/referrals hammasi 0 bo'lsa - yangi deymiz
+                cur.execute("SELECT points, referrals FROM users WHERE user_id=?", (user_id,))
+                p_r = cur.fetchone()
+                if p_r and (p_r[0] == 0 and p_r[1] == 0):
+                    cur.execute("UPDATE users SET referrals = referrals + 1 WHERE user_id=?", (inviter_id,))
+                    conn.commit()
+                    try:
+                        await bot.send_message(inviter_id, "👥 Sizning referalingiz orqali yangi foydalanuvchi kirdi! +1")
+                    except:
+                        pass
 
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     keyboard.add("🇺🇿 O‘zbek", "🇷🇺 Rus", "🇬🇧 Ingliz")
@@ -97,7 +137,8 @@ async def set_language(message: types.Message):
     lang_map = {"🇺🇿 O‘zbek": "uz", "🇷🇺 Rus": "ru", "🇬🇧 Ingliz": "en"}
     lang = lang_map[message.text]
     user_id = message.from_user.id
-    cur.execute("UPDATE users SET lang = ? WHERE user_id = ?", (lang, user_id))
+    cur.execute("UPDATE users SET lang = ?, username=?, first_name=? WHERE user_id = ?",
+                (lang, message.from_user.username or "", message.from_user.first_name or "", user_id))
     conn.commit()
 
     if lang == "uz":
@@ -108,14 +149,16 @@ async def set_language(message: types.Message):
             "👤 /profile — Profilingiz\n"
             "🎁 /bonus — Kunlik bonus\n"
             "🏆 /top — Reyting\n"
-            "📌 /status — Status tushuntirish"
+            "📌 /status — Status tushuntirish\n"
+            "⚙️ /set_gender — Jinsingiz\n"
+            "🎯 /set_want — Kim bilan suhbat (any/male/female)"
         )
         help_text = (
-            "👋 Assalomu alaykum! Chat360 – bu tez va qiziqarli suhbat topish botidir.\n"
-            "💎 Foydalanuvchilar statusga ega: Normal, Bronze, Silver, Gold, VIP.\n"
-            "⭐ Har kuni bonuslar to‘plash orqali statusingizni oshirishingiz mumkin.\n"
-            "⚡ Statusingiz qanchalik yuqori bo‘lsa, chat topish tezroq bo‘ladi.\n"
-            "👤 /set_gender — Jinsingizni tanlash"
+            "👋 Assalomu alaykum! Chat360 – tez va qiziqarli suhbat bot.\n"
+            "💎 Statuslar: Normal, Bronze, Silver, Gold, VIP.\n"
+            "⭐ Kunlik bonuslar bilan ball to‘plang, status oshadi.\n"
+            "⚡ Yuqori status – tezroq matching.\n"
+            "🔗 Do‘st chaqirish: /ref"
         )
     elif lang == "ru":
         text = (
@@ -125,34 +168,45 @@ async def set_language(message: types.Message):
             "👤 /profile — Ваш профиль\n"
             "🎁 /bonus — Ежедневный бонус\n"
             "🏆 /top — Рейтинг\n"
-            "📌 /status — Описание статусов"
+            "📌 /status — Описание статусов\n"
+            "⚙️ /set_gender — Ваш пол\n"
+            "🎯 /set_want — Кого искать (any/male/female)"
         )
         help_text = (
-            "👋 Привет! Chat360 – это бот для быстрого и интересного поиска собеседника.\n"
-            "💎 Пользователи имеют статусы: Normal, Bronze, Silver, Gold, VIP.\n"
-            "⭐ Ежедневно собирая бонусы, вы можете повышать свой статус.\n"
-            "⚡ Чем выше ваш статус, тем быстрее ищется чат.\n"
-            "👤 /set_gender — Выберите ваш пол"
+            "👋 Привет! Chat360 – быстрый и удобный чат-бот.\n"
+            "💎 Статусы: Normal, Bronze, Silver, Gold, VIP.\n"
+            "⭐ Собирайте бонусы, повышайте статус.\n"
+            "⚡ Чем выше статус, тем быстрее поиск.\n"
+            "🔗 Реферал: /ref"
         )
     else:
         text = (
-            "💬 /chat — Find a chat partner\n"
+            "💬 /chat — Find a partner\n"
             "⏭ /next — Next partner\n"
             "🛑 /stop — Stop chat\n"
             "👤 /profile — Your profile\n"
             "🎁 /bonus — Daily bonus\n"
             "🏆 /top — Ranking\n"
-            "📌 /status — Status explanation"
+            "📌 /status — Status info\n"
+            "⚙️ /set_gender — Your gender\n"
+            "🎯 /set_want — Preferred partner (any/male/female)"
         )
         help_text = (
-            "👋 Hello! Chat360 is a fast and fun chat partner bot.\n"
-            "💎 Users have statuses: Normal, Bronze, Silver, Gold, VIP.\n"
-            "⭐ Collect daily bonuses to increase your status.\n"
-            "⚡ The higher your status, the faster your chat will be found.\n"
-            "👤 /set_gender — Set your gender"
+            "👋 Welcome to Chat360.\n"
+            "💎 Statuses: Normal → VIP.\n"
+            "⭐ Collect daily bonuses to level up.\n"
+            "⚡ Higher status, faster matching.\n"
+            "🔗 Referral: /ref"
         )
 
     await message.answer(f"✅ Til o‘rnatildi: {lang.upper()}\n\n{text}\n\n{help_text}")
+
+# ================= Referral link =================
+@dp.message_handler(commands=['ref'])
+async def ref_cmd(message: types.Message):
+    bot_username = (await bot.get_me()).username
+    link = f"https://t.me/{bot_username}?start={message.from_user.id}"
+    await message.answer(f"🔗 Sizning taklif havolangiz:\n{link}\nDo‘stlaringiz bilan ulashing!")
 
 # ================= Jins tanlash =================
 @dp.message_handler(commands=['set_gender'])
@@ -168,6 +222,22 @@ async def save_gender(message: types.Message):
     cur.execute("UPDATE users SET gender = ? WHERE user_id = ?", (gender, user_id))
     conn.commit()
     await message.answer(f"Sizning jinsingiz saqlandi: {message.text}", reply_markup=types.ReplyKeyboardRemove())
+
+# ================= NEW: Kim bilan suhbat (want_gender) =================
+@dp.message_handler(commands=['set_want'])
+async def set_want_cmd(message: types.Message):
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
+    kb.add("Any", "O‘g‘il", "Qiz")
+    await message.answer("Kim bilan suhbatlashmoqchisiz? (Any/O‘g‘il/Qiz)", reply_markup=kb)
+
+@dp.message_handler(lambda m: m.text in ["Any", "O‘g‘il", "Qiz"])
+async def save_want_gender(message: types.Message):
+    user_id = message.from_user.id
+    mapping = {"Any": "any", "O‘g‘il": "male", "Qiz": "female"}
+    want = mapping[message.text]
+    cur.execute("UPDATE users SET want_gender=? WHERE user_id=?", (want, user_id))
+    conn.commit()
+    await message.answer(f"✅ Tanlov saqlandi: {message.text}", reply_markup=types.ReplyKeyboardRemove())
 
 # ================= Kunlik bonus =================
 @dp.message_handler(commands=['bonus'])
@@ -198,15 +268,20 @@ async def bonus_cmd(message: types.Message):
 @dp.message_handler(commands=['profile'])
 async def profile_cmd(message: types.Message):
     user_id = message.from_user.id
-    cur.execute("SELECT points, referrals, status FROM users WHERE user_id = ?", (user_id,))
+    cur.execute("SELECT points, referrals, status, lang, username, first_name, gender, want_gender FROM users WHERE user_id = ?", (user_id,))
     data = cur.fetchone()
     if data:
-        points, referrals, status = data
-        status_emoji = {
-            'Normal':'⚪', 'Bronze':'🟫', 'Silver':'🟦', 'Gold':'🟨', 'VIP':'🟪'
-        }
+        points, referrals, status, lang, username, first_name, gender, want = data
+        status_emoji = {'Normal':'⚪', 'Bronze':'🟫', 'Silver':'🟦', 'Gold':'🟨', 'VIP':'🟪'}
+        uname = f"@{username}" if username else (first_name or "Noma’lum")
+        gmap = {"male": "O‘g‘il", "female": "Qiz", "none": "Kiritilmagan"}
+        wmap = {"any": "Har kim", "male": "O‘g‘il", "female": "Qiz"}
         await message.answer(
             f"{status_emoji.get(status,'⚪')} Profilingiz:\n\n"
+            f"👤 Foydalanuvchi: {uname}\n"
+            f"🌐 Til: {lang.upper() if lang!='unknown' else '—'}\n"
+            f"⚧ Jins: {gmap.get(gender,'—')}\n"
+            f"🎯 Tanlov: {wmap.get(want,'Har kim')}\n"
             f"⭐ Ball: {points}\n"
             f"👥 Referral: {referrals} ta\n"
             f"🔥 Status: {status}"
@@ -228,41 +303,70 @@ async def status_info(message: types.Message):
     )
     await message.answer(text)
 
-# ================= CHAT komandasi =================
+# ================= CHAT komandasi (yaxshilangan matching) =================
+def status_priority(s: str) -> int:
+    order = {"VIP": 0, "Gold": 1, "Silver": 2, "Bronze": 3, "Normal": 4}
+    return order.get(s, 5)
+
+def is_gender_ok(my_want: str, partner_gender: str) -> bool:
+    # my_want: any/male/female ; partner_gender: male/female/none
+    if my_want == "any" or partner_gender == "none":
+        return True
+    return my_want == partner_gender
+
 @dp.message_handler(commands=['chat'])
 async def chat_cmd(message: types.Message):
     user_id = message.from_user.id
-    cur.execute("SELECT status, gender FROM users WHERE user_id = ?", (user_id,))
+    cur.execute("SELECT status, gender, want_gender FROM users WHERE user_id = ?", (user_id,))
     result = cur.fetchone()
     if not result:
         await message.answer("❌ Siz ro‘yxatda topilmadingiz. /start bosing.")
         return
 
-    user_status, user_gender = result
+    user_status, user_gender, user_want = result
 
-    # Statuslar tartibi: yuqoridan pastga
-    status_order = ["VIP", "Gold", "Silver", "Bronze", "Normal"]
-
-    # Qaysi statuslarni qidirish kerakligini aniqlaymiz
-    if user_status == "VIP":
-        allowed_statuses = status_order  # VIP hamma statusni topishi mumkin
-    else:
-        index = status_order.index(user_status)
-        allowed_statuses = status_order[index:]
-
-    # Kutayotganlar ro'yxatini olish
-    cur.execute("SELECT user_id, gender, status FROM waiting WHERE user_id != ?", (user_id,))
+    # Kutayotganlar ro'yxatini olish (o'zidan tashqari) va status bo'yicha ustuvorlik
+    cur.execute("""
+        SELECT user_id, gender, status FROM waiting
+        WHERE user_id != ?
+        ORDER BY CASE status
+            WHEN 'VIP' THEN 0
+            WHEN 'Gold' THEN 1
+            WHEN 'Silver' THEN 2
+            WHEN 'Bronze' THEN 3
+            ELSE 4
+        END, user_id ASC
+    """, (user_id,))
     waiting_users = cur.fetchall()
 
     partner_id = None
 
-    # Status va jinsga qarab mos partner topish
+    # Matching: ikkala tomon istagini tekshiramiz
     for w_id, w_gender, w_status in waiting_users:
-        if w_status in allowed_statuses and (w_gender == "none" or user_gender == "none" or w_gender != user_gender):
+        # waiting dagi foydalanuvchining xohishlarini ham olamiz
+        cur.execute("SELECT want_gender FROM users WHERE user_id=?", (w_id,))
+        row = cur.fetchone()
+        w_want = row[0] if row else "any"
+
+        ok1 = is_gender_ok(user_want, w_gender)      # menga u mosmi?
+        ok2 = is_gender_ok(w_want, user_gender)      # unga men mosmanmi?
+        if ok1 and ok2:
             partner_id = w_id
             break
 
     if partner_id:
+        # Har ehtimolga: partner allaqachon chatda bo‘lsa, tashlab ketamiz
+        cur.execute("SELECT partner_id FROM active_chats WHERE user_id=?", (partner_id,))
+        if cur.fetchone():
+            # band ekan, keyingisiga o'tamiz (oddiy usul)
+            # qolgan kutayotganlar uchun qayta urinmaymiz — userni waitingga qo'shamiz
+            cur.execute("INSERT OR REPLACE INTO waiting (user_id, gender, status) VALUES (?, ?, ?)",
+                        (user_id, user_gender, user_status))
+            conn.commit()
+            await message.answer("⏳ Hozircha band, suhbatdosh qidirilmoqda...")
+            return
+
+        # Ulandi
         cur.execute("DELETE FROM waiting WHERE user_id IN (?, ?)", (user_id, partner_id))
         cur.execute("INSERT OR REPLACE INTO active_chats (user_id, partner_id) VALUES (?, ?)", (user_id, partner_id))
         cur.execute("INSERT OR REPLACE INTO active_chats (user_id, partner_id) VALUES (?, ?)", (partner_id, user_id))
@@ -270,8 +374,9 @@ async def chat_cmd(message: types.Message):
         await bot.send_message(user_id, "✅ Suhbatdosh topildi! 💬")
         await bot.send_message(partner_id, "✅ Suhbatdosh topildi! 💬")
     else:
-        # waiting jadvaliga jins va status bilan qo‘shish
-        cur.execute("INSERT OR REPLACE INTO waiting (user_id, gender, status) VALUES (?, ?, ?)", (user_id, user_gender, user_status))
+        # waiting jadvaliga o'zining gender va statusini qo‘shamiz
+        cur.execute("INSERT OR REPLACE INTO waiting (user_id, gender, status) VALUES (?, ?, ?)",
+                    (user_id, user_gender, user_status))
         conn.commit()
         await message.answer("⏳ Suhbatdosh qidirilmoqda...")
 
@@ -287,6 +392,7 @@ async def stop_cmd(message: types.Message):
         conn.commit()
         await bot.send_message(user_id, "❌ Suhbat tugatildi.")
         await bot.send_message(partner_id, "❌ Suhbat tugatildi.")
+        # Ularni waiting ga qaytarmaymiz — foydalanuvchining o‘zi /chat bosadi.
     else:
         await message.answer("⚠️ Siz hozir suhbatda emassiz.")
 
@@ -296,25 +402,39 @@ async def next_cmd(message: types.Message):
     await stop_cmd(message)
     await chat_cmd(message)
 
-# ================= TOP =================
+# ================= TOP (usernames bilan) =================
 @dp.message_handler(commands=['top'])
 async def top_cmd(message: types.Message):
-    cur.execute("SELECT user_id, points FROM users ORDER BY points DESC LIMIT 10")
+    cur.execute("SELECT user_id, points, username, first_name FROM users ORDER BY points DESC LIMIT 10")
     top_users = cur.fetchall()
     text = "🏆 Reyting TOP-10:\n\n"
-    for i, (uid, points) in enumerate(top_users, start=1):
-        text += f"{i}. 👤 {uid} — ⭐ {points} ball\n"
+    for i, (uid, points, username, first_name) in enumerate(top_users, start=1):
+        name = f"@{username}" if username else (first_name or str(uid))
+        text += f"{i}. {name} — ⭐ {points} ball\n"
     await message.answer(text)
 
-# ================= Oddiy matn xabarlar =================
-@dp.message_handler()
+# ================= Barcha turlarni relay qilish (MEDIA + TEXT) =================
+@dp.message_handler(content_types=types.ContentType.ANY)
 async def chat_handler(message: types.Message):
     user_id = message.from_user.id
+    # username/ism yangilab turamiz
+    cur.execute("UPDATE users SET username=?, first_name=? WHERE user_id=?",
+                (message.from_user.username or "", message.from_user.first_name or "", user_id))
+    conn.commit()
+
+    # faqat /buyruqlar emas, oddiy xabarlar
+    if message.text and message.text.startswith('/'):
+        return
+
     cur.execute("SELECT partner_id FROM active_chats WHERE user_id = ?", (user_id,))
     partner = cur.fetchone()
     if partner:
         partner_id = partner[0]
-        await bot.send_message(partner_id, message.text)
+        try:
+            # har qanday kontent turini ko'chirib yuboramiz
+            await message.copy_to(partner_id)
+        except Exception as e:
+            await message.answer("⚠️ Xabarni yuborib bo‘lmadi.")
     else:
         await message.answer("⚠️ Siz hozir hech kim bilan suhbatda emassiz. /chat bosing.")
 
