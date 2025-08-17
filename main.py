@@ -7,6 +7,9 @@ from aiogram.utils import executor
 
 # 🔑 Token environment variables'dan olinadi
 API_TOKEN = os.getenv("BOT_TOKEN")
+if not API_TOKEN:
+    print("❌ BOT_TOKEN muhit o‘zgaruvchisi topilmadi!")
+    exit()
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
@@ -22,7 +25,7 @@ CREATE TABLE IF NOT EXISTS users (
     gender TEXT DEFAULT 'none',
     points INTEGER DEFAULT 0,
     referrals INTEGER DEFAULT 0,
-    status TEXT DEFAULT 'normal',
+    status TEXT DEFAULT 'Normal',
     want_gender TEXT DEFAULT 'any',
     country TEXT DEFAULT 'unknown',
     lang TEXT DEFAULT 'unknown',
@@ -38,11 +41,12 @@ CREATE TABLE IF NOT EXISTS active_chats (
 )
 """)
 
-# ⏳ Waiting list
+# ⏳ Waiting list (gender va status qo‘shildi)
 cur.execute("""
 CREATE TABLE IF NOT EXISTS waiting (
     user_id INTEGER PRIMARY KEY,
-    want_gender TEXT DEFAULT 'any'
+    gender TEXT DEFAULT 'none',
+    status TEXT DEFAULT 'Normal'
 )
 """)
 
@@ -247,18 +251,14 @@ async def chat_cmd(message: types.Message):
         allowed_statuses = status_order[index:]
 
     # Kutayotganlar ro'yxatini olish
-    cur.execute("SELECT user_id FROM waiting WHERE user_id != ?", (user_id,))
+    cur.execute("SELECT user_id, gender, status FROM waiting WHERE user_id != ?", (user_id,))
     waiting_users = cur.fetchall()
 
     partner_id = None
 
     # Status va jinsga qarab mos partner topish
-    for w in waiting_users:
-        w_id = w[0]
-        cur.execute("SELECT status, gender FROM users WHERE user_id = ?", (w_id,))
-        w_status, w_gender = cur.fetchone()
-
-        if w_status in allowed_statuses and w_gender != user_gender and w_gender != "none":
+    for w_id, w_gender, w_status in waiting_users:
+        if w_status in allowed_statuses and (w_gender == "none" or user_gender == "none" or w_gender != user_gender):
             partner_id = w_id
             break
 
@@ -270,7 +270,8 @@ async def chat_cmd(message: types.Message):
         await bot.send_message(user_id, "✅ Suhbatdosh topildi! 💬")
         await bot.send_message(partner_id, "✅ Suhbatdosh topildi! 💬")
     else:
-        cur.execute("INSERT OR REPLACE INTO waiting (user_id) VALUES (?)", (user_id,))
+        # waiting jadvaliga jins va status bilan qo‘shish
+        cur.execute("INSERT OR REPLACE INTO waiting (user_id, gender, status) VALUES (?, ?, ?)", (user_id, user_gender, user_status))
         conn.commit()
         await message.answer("⏳ Suhbatdosh qidirilmoqda...")
 
@@ -314,6 +315,8 @@ async def chat_handler(message: types.Message):
     if partner:
         partner_id = partner[0]
         await bot.send_message(partner_id, message.text)
+    else:
+        await message.answer("⚠️ Siz hozir hech kim bilan suhbatda emassiz. /chat bosing.")
 
 # 🚀 BOT ISHGA TUSHIRISH
 if __name__ == "__main__":
