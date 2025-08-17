@@ -227,18 +227,17 @@ async def save_gender(message: types.Message):
 @dp.message_handler(commands=['set_want'])
 async def set_want_cmd(message: types.Message):
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
-    kb.add("Any", "O‘g‘il", "Qiz")
-    await message.answer("Kim bilan suhbatlashmoqchisiz? (Any/O‘g‘il/Qiz)", reply_markup=kb)
+    kb.add("Any", "O‘g‘il (suhbatdosh)", "Qiz (suhbatdosh)")
+    await message.answer("Kim bilan suhbatlashmoqchisiz?", reply_markup=kb)
 
-@dp.message_handler(lambda m: m.text in ["Any", "O‘g‘il", "Qiz"])
+@dp.message_handler(lambda m: m.text in ["Any", "O‘g‘il (suhbatdosh)", "Qiz (suhbatdosh)"])
 async def save_want_gender(message: types.Message):
     user_id = message.from_user.id
-    mapping = {"Any": "any", "O‘g‘il": "male", "Qiz": "female"}
+    mapping = {"Any": "any", "O‘g‘il (suhbatdosh)": "male", "Qiz (suhbatdosh)": "female"}
     want = mapping[message.text]
     cur.execute("UPDATE users SET want_gender=? WHERE user_id=?", (want, user_id))
     conn.commit()
     await message.answer(f"✅ Tanlov saqlandi: {message.text}", reply_markup=types.ReplyKeyboardRemove())
-
 # ================= Kunlik bonus =================
 @dp.message_handler(commands=['bonus'])
 async def bonus_cmd(message: types.Message):
